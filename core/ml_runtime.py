@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import List, Any, Optional, Tuple, Union, Dict
 import random
 import math
-
+from core.ml_compat import safe_compare_le
 # ---------------------------
 # MiniMatrixOps (sin numpy)
 # ---------------------------
@@ -122,7 +122,6 @@ def linear(x: float) -> float:
 
 def linear_derivative(_: float) -> float:
     return 1.0
-
 
 # ---------------------------
 # Decision tree helpers (CART)
@@ -288,21 +287,53 @@ class DecisionTreeClassifier:
             return node
         idx = node.get('index')
         if idx is None:
-            # si el nodo tiene el terminal izquierdo/derecho como valores terminales, retorna a la izquierda
+            # hoja: node['left'] o node['right'] o node.get('label') según implementación
             if 'left' in node and not isinstance(node['left'], dict):
                 return node['left']
+            if 'right' in node and not isinstance(node['right'], dict):
+                return node['right']
+            # fallback: si contiene 'label' o 'class'
+            if 'label' in node:
+                return node['label']
+            if 'class' in node:
+                return node['class']
             return node
+    # obtener valor de fila en la posición idx
+    # si row no es indexable numéricamente (p.ej. diccionario), adaptamos:
+        if isinstance(row, dict):
+            # intentamos tomar por índice si el dict usa índices numericos como claves o por nombre
+            if idx in row:
+                row_val = row[idx]
+            else:
+                # intentar convertir idx a str
+                row_val = row.get(str(idx), None)
+                if row_val is None:
+                    # intentar tomar primer valor numérico de row
+                    for vv in row.values():
+                        if isinstance(vv, (int, float)):
+                            row_val = vv
+                            break
+        else:
+            # row es secuencia indexable
+            row_val = row[idx]
+
         val = node.get('value')
+        # FIX: Protección contra nodos con 'value' tipo dict
+        if isinstance(val, dict):
+            # Si el valor del nodo es un subárbol dict, continuar recorriendo
+            return self._predict_row(val, row)
+
         try:
-            if row[idx] <= val:
-                return self._predict_row(node.get('left'), row)
-            else:
-                return self._predict_row(node.get('right'), row)
-        except Exception:
-            if str(row[idx]) <= str(val):
-                return self._predict_row(node.get('left'), row)
-            else:
-                return self._predict_row(node.get('right'), row)
+        # si val es subnodo, safe_le delegará a predict_fn_for_subnode (self._predict_row)
+            decision = safe_compare_le(row[idx], node.get("value"), subnode_handler=lambda subnode, _: self._predict_row(subnode, row))
+        except TypeError as e:
+            # registrar y relanzar con contexto para debugging (fail-fast)
+            raise TypeError(f"Error during tree comparison at node index={idx}: {e}")
+
+        if decision:
+            return self._predict_row(node.get('left'), row)
+        else:
+            return self._predict_row(node.get('right'), row)
 
     def predict(self, X: List[List[Any]]) -> List[Any]:
         if self.root is None:

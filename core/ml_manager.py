@@ -15,6 +15,7 @@ import os
 
 # Preferir el tiempo de ejecución interno
 from core import ml_runtime
+from core.ml_compat import normalize_tree
 
 # Intenta importar sklearn y joblib opcionalmente.
 _sklearn = None
@@ -177,7 +178,6 @@ def train_svm(model_name: str, dataset: list, *, learning_rate=0.001, lambda_par
 
 def train_neural_network(model_name: str, dataset: list, *, hidden_size=4, epochs=1000, lr=0.01):
     """Entrena una pequeña red neuronal (MiniML)."""
-    import numpy as np
     input_size = len(dataset[0]) - 1
     try:
         model = ml_runtime.MiniNeuralNetwork(input_size=input_size, hidden_size=hidden_size, lr=lr, epochs=epochs)
@@ -301,6 +301,7 @@ def load_model(name: str, path: str) -> None:
     # fallback para el minicargador
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
+        data = normalize_tree(data)
     if data.get('type') == 'mini_model':
         # naive loader: Reconstruir DecisionTree/RandomForest a partir de las raíces almacenadas
         if 'trees' in data and data['trees'] is not None:
@@ -308,6 +309,7 @@ def load_model(name: str, path: str) -> None:
             rf = ml_runtime.RandomForestClassifier(n_trees=len(data['trees']))
             # Construir objetos DecisionTreeClassifier ficticios y establecer la raíz
             rf.trees = []
+            data['trees'] = normalize_tree(data['trees'])
             for root in data['trees']:
                 dt = ml_runtime.DecisionTreeClassifier()
                 dt.root = root
@@ -527,6 +529,7 @@ def train_decision_tree(name: Optional[str] = None, dataset: Optional[List[List[
     return {'meta': meta, 'model': model, 'model_name': name}
 
 
+# -------------------------
 def save_registry(file='registry.json'):
     serializable = {k: {'mode': v['mode'], 'type': v['type']} for k, v in _MODEL_REGISTRY.items()}  # No serializa models, solo meta
     with open(file, 'w') as f:
@@ -537,6 +540,34 @@ def load_registry(file='registry.json'):
         data = json.load(f)
     for k, v in data.items():
         _MODEL_REGISTRY[k] = v  # Models necesitan re-train
+
+
+# -------------------------
+def validate_tree_node(node: Any) -> None:
+    """
+    Valida recursivamente la estructura de un nodo de árbol (dict) para asegurar que sea correcta.
+    - Nodos internos: deben tener 'index' (int), 'value' (int/float), 'left' y 'right' (nodos válidos).
+    - Nodos hoja: no dict, debe ser int/float/str (clase o valor de regresión).
+    Lanza ValueError si es inválido.
+    """
+    if not isinstance(node, dict):
+        # Hoja: permite valores simples (clases o predicciones)
+        if not isinstance(node, (int, float, str)):
+            raise ValueError(f"Nodo hoja inválido: tipo {type(node).__name__} no soportado (esperado int/float/str).")
+        return
+    
+    # Nodo interno
+    if 'index' not in node or not isinstance(node['index'], int):
+        raise ValueError("Nodo interno inválido: falta 'index' o no es int.")
+    
+    if 'value' not in node or not isinstance(node['value'], (int, float)):
+        raise ValueError(f"Nodo interno inválido: 'value' debe ser int/float, pero es {type(node['value']).__name__}.")
+    
+    if 'left' not in node or 'right' not in node:
+        raise ValueError("Nodo interno inválido: falta 'left' o 'right'.")
+    
+    validate_tree_node(node['left'])
+    validate_tree_node(node['right'])
 
 # -------------------------
 # Evaluación general
@@ -600,7 +631,7 @@ def evaluate(y_true=None, y_pred=None, output: Optional[str] = None, metrics: st
     except Exception as e:
         raise RuntimeError(f"Error evaluating results: {e}")
 
-# =========================================================
+# -------------------------
 # Evaluador Inteligente: clasificación / regresión
 
 def evaluate_ext(y_true=None, y_pred=None, metrics=None, output=None, detailed=False):
@@ -644,7 +675,7 @@ def evaluate_ext(y_true=None, y_pred=None, metrics=None, output=None, detailed=F
 
         results = {}
 
-    # === Clasificación ==
+    # Clasificación
     if any(m in metrics for m in ["accuracy", "precision", "recall", "f1"]):
         acc = ml_runtime.accuracy_score(y_true, y_pred)
         results["accuracy"] = acc
@@ -666,7 +697,7 @@ def evaluate_ext(y_true=None, y_pred=None, metrics=None, output=None, detailed=F
         if "recall" in metrics: results["recall"] = recall
         if "f1" in metrics: results["f1"] = f1
 
-    # === Regresión ===
+    # Regresión
     if any(m in metrics for m in ["mae", "mse", "r2"]):
         n = len(y_true)
         diffs = [(float(yt) - float(yp)) for yt, yp in zip(y_true, y_pred)]
@@ -684,36 +715,9 @@ def evaluate_ext(y_true=None, y_pred=None, metrics=None, output=None, detailed=F
         if "mse" in metrics: results["mse"] = mse
         if "r2" in metrics: results["r2"] = r2
 
-    # === Resultado final ===
+    # Resultado final
     if detailed:
         return results
 
     main_metric = metrics[0]
     return results.get(main_metric, None)
-
-
-def validate_tree_node(node: Any) -> None:
-    """
-    Valida recursivamente la estructura de un nodo de árbol (dict) para asegurar que sea correcta.
-    - Nodos internos: deben tener 'index' (int), 'value' (int/float), 'left' y 'right' (nodos válidos).
-    - Nodos hoja: no dict, debe ser int/float/str (clase o valor de regresión).
-    Lanza ValueError si es inválido.
-    """
-    if not isinstance(node, dict):
-        # Hoja: permite valores simples (clases o predicciones)
-        if not isinstance(node, (int, float, str)):
-            raise ValueError(f"Nodo hoja inválido: tipo {type(node).__name__} no soportado (esperado int/float/str).")
-        return
-    
-    # Nodo interno
-    if 'index' not in node or not isinstance(node['index'], int):
-        raise ValueError("Nodo interno inválido: falta 'index' o no es int.")
-    
-    if 'value' not in node or not isinstance(node['value'], (int, float)):
-        raise ValueError(f"Nodo interno inválido: 'value' debe ser int/float, pero es {type(node['value']).__name__}.")
-    
-    if 'left' not in node or 'right' not in node:
-        raise ValueError("Nodo interno inválido: falta 'left' o 'right'.")
-    
-    validate_tree_node(node['left'])
-    validate_tree_node(node['right'])

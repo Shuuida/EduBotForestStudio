@@ -378,36 +378,49 @@ def extract_model_structure(model_obj):
             }
             return struct
 
+        try:
+            # Intentar detectar/extraer estructura sklearn (si aplica)
+            if "sklearn" in str(type(model_obj)):
+                struct = {"framework": "sklearn"}
+                model_type = type(model_obj).__name__
 
-        # sklearn
-        if "sklearn" in str(type(model_obj)):
-            struct = {"framework": "sklearn"}
-            model_type = type(model_obj).__name__
-            if hasattr(model_obj, "estimators_"):  # RandomForest
-                struct["type"] = "RandomForest"
-                struct["trees"] = []
-                for est in model_obj.estimators_:
-                    tree = est.tree_
-                    struct["trees"].append({
-                        "features": tree.feature.tolist(),
-                        "thresholds": tree.threshold.tolist(),
-                        "values": tree.value.tolist()
-                    })
-            elif hasattr(model_obj, "tree_"):  # DecisionTree
-                tree = model_obj.tree_
-                struct["type"] = "DecisionTree"
-                struct["tree"] = {
-                    "features": tree.feature.tolist(),
-                    "thresholds": tree.threshold.tolist(),
-                    "values": tree.value.tolist()
-                }
+                # RandomForest (ensemble)
+                if hasattr(model_obj, "estimators_"):
+                    struct["type"] = "RandomForest"
+                    struct["trees"] = []
+                    for est in model_obj.estimators_:
+                        # est.tree_ tiene arrays; guardamos representaciones simples
+                        tree = est.tree_
+                        struct["trees"].append({
+                            "features": getattr(tree, "feature", []).tolist() if hasattr(tree, "feature") else [],
+                            "thresholds": getattr(tree, "threshold", []).tolist() if hasattr(tree, "threshold") else [],
+                            "values": getattr(tree, "value", []).tolist() if hasattr(tree, "value") else []
+                        })
 
-            if hasattr(model_obj, "metadata") and "saved_at" in model_obj.metadata:
-                struct["saved_at"] = model_obj.metadata["saved_at"]
+                # DecisionTree (single)
+                elif hasattr(model_obj, "tree_"):
+                    tree = model_obj.tree_
+                    struct["type"] = "DecisionTree"
+                    struct["tree"] = {
+                        "features": getattr(tree, "feature", []).tolist() if hasattr(tree, "feature") else [],
+                        "thresholds": getattr(tree, "threshold", []).tolist() if hasattr(tree, "threshold") else [],
+                        "values": getattr(tree, "value", []).tolist() if hasattr(tree, "value") else []
+                    }
 
-            return struct
+                # metadata opcional
+                if hasattr(model_obj, "metadata") and "saved_at" in getattr(model_obj, "metadata", {}):
+                    struct["saved_at"] = model_obj.metadata["saved_at"]
 
-        # Desconocido
+                # Si hemos llegado hasta aquí, retornamos la estructura sklearn válida (o parcialmente válida)
+                return struct
+
+            # Si no es sklearn, salimos del try para retornar fallback "unknown" abajo
+        except Exception as e:
+            # Si sklearn estaba presente pero hubo algún error al extraer la estructura,
+            # devolvemos un struct que indique que es sklearn pero no soportado (y el error).
+            return {"framework": "sklearn", "type": "unsupported", "error": str(e), "repr": repr(model_obj)}
+        
+        # No era sklearn (o no se intentó extracción) -> devolver unknown (fallthrough seguro)
         return {"framework": "unknown", "repr": repr(model_obj)}
 
     except Exception as e:
