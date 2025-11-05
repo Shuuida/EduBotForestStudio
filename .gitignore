@@ -1,0 +1,28 @@
+# === Python build / cache ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# === Virtual environments ===
+venv/
+.env/
+.venv/
+
+# === Data and JSON archives ===
+datasets/*.json
+models/
+*.json
+logs/*.log
+projects/
+*.edubotproj
+*.json
+
+# === System / IDE files ===
+.DS_Store
+Thumbs.db
+pytest.ini
+ml_debug_log.txt
+firmware_export.json
+.vscode/
+.idea/
