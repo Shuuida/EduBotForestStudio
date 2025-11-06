@@ -515,7 +515,7 @@ def load_registry(file='registry.json'):
 # -------------------------
 # Evaluación general
 
-def evaluate(y_true=None, y_pred=None, output: Optional[str] = None, metric: str = "accuracy") -> Dict[str, Any]:
+def evaluate(y_true=None, y_pred=None, output: Optional[str] = None, metrics: str = "accuracy") -> Dict[str, Any]:
     """
     Evalúa resultados de ML de forma flexible.
     Compatible con nodos ML ('ml_eval') y ml_adapter.
@@ -535,24 +535,20 @@ def evaluate(y_true=None, y_pred=None, output: Optional[str] = None, metric: str
         if isinstance(y_pred, str) and y_pred in _MODEL_REGISTRY:
             y_pred = _MODEL_REGISTRY[y_pred]
 
-        # Convertir a listas planas si son numpy arrays
-        try:
-            import numpy as np
-            if isinstance(y_true, np.ndarray):
-                y_true = y_true.tolist()
-            if isinstance(y_pred, np.ndarray):
-                y_pred = y_pred.tolist()
-        except ImportError:
-            pass
+        # Conversión universal de arrays a listas (sin dependencias externas)
+        if hasattr(y_true, "tolist") and callable(y_true.tolist):
+            y_true = y_true.tolist()
+        if hasattr(y_pred, "tolist") and callable(y_pred.tolist):
+            y_pred = y_pred.tolist()
 
         # Escoge métrica (por ahora solo accuracy)
-        if metric == "accuracy":
+        if metrics == "accuracy":
             score = ml_runtime.accuracy_score(y_true, y_pred)
         else:
-            raise NotImplementedError(f"Métrica '{metric}' no implementada")
+            raise NotImplementedError(f"Métrica '{metrics}' no implementada")
 
         # Resultado
-        result = {"metric": metric, "score": score}
+        result = {"metrics": metrics, "score": score}
         if output:
             result["output_var"] = output
 
@@ -566,18 +562,21 @@ def evaluate(y_true=None, y_pred=None, output: Optional[str] = None, metric: str
 
 def evaluate_ext(y_true=None, y_pred=None, metrics=None, output=None, detailed=False):
     """
-    Evaluación extendida unificada para clasificación y regresión.
-    - metrics: lista de métricas a calcular ["accuracy", "precision", "recall", "f1", "mae", "mse", "r2"]
-    - y_true: lista real
-    - y_pred: lista de predicciones (puede ser nombre de variable o directamente lista)
-    - output: variable de salida opcional (solo para logging)
-    - detailed: si True, devuelve diccionario detallado de métricas
+    Evaluación extendida unificada para clasificación y regresión (sin dependencias externas).
+    Compatible con entornos embebidos (firmware tipo MegaPi / Arduino).
+    
+    Args:
+        y_true (list): valores reales.
+        y_pred (list): valores predichos (puede ser lista o nombre de variable registrada).
+        metrics (list): lista de métricas ("accuracy", "precision", "recall", "f1", "mae", "mse", "r2").
+        output (str): variable de salida opcional (para logs).
+        detailed (bool): si True, devuelve un diccionario completo.
+    
+    Returns:
+        float o dict: resultado principal o diccionario de métricas.
     """
-    import numpy as np
-
-    # Si y_pred es una string (nombre de variable), intenta resolverla desde el registro si existe
+    # Resolución de nombre si es string
     if isinstance(y_pred, str):
-        # Busca en el registro interno de modelos o variables previas (si lo maneja)
         try:
             y_pred = globals().get(y_pred, [])
         except Exception:
@@ -589,42 +588,62 @@ def evaluate_ext(y_true=None, y_pred=None, metrics=None, output=None, detailed=F
     if metrics is None:
         metrics = ["accuracy"]
 
-    results = {}
+    if isinstance(metrics, str):
+        metrics = [metrics]
+    elif isinstance(metrics, (list, tuple)) and len(metrics) == 1 and isinstance(metrics[0], (list, tuple)):
+        metrics = list(metrics[0])
+    elif isinstance(metrics, (list, tuple)) and len(metrics) == 1 and isinstance(metrics[0], str) and metrics[0].startswith("["):
+        try:
+            import ast
+            metrics = ast.literal_eval(metrics[0])
+        except Exception:
+            metrics = ["accuracy"]
 
-    # Clasificación
+        results = {}
+
+    # === Clasificación ==
     if any(m in metrics for m in ["accuracy", "precision", "recall", "f1"]):
         acc = ml_runtime.accuracy_score(y_true, y_pred)
         results["accuracy"] = acc
-        try:
-            import sklearn.metrics as skm
-            if "precision" in metrics:
-                results["precision"] = skm.precision_score(y_true, y_pred, average="macro", zero_division=0)
-            if "recall" in metrics:
-                results["recall"] = skm.recall_score(y_true, y_pred, average="macro", zero_division=0)
-            if "f1" in metrics:
-                results["f1"] = skm.f1_score(y_true, y_pred, average="macro", zero_division=0)
-        except Exception:
-            pass  # sklearn opcional
 
-    # Regresión
+        # Métricas básicas sin sklearn
+        tp = fp = fn = tn = 0
+        for yt, yp in zip(y_true, y_pred):
+            if yt == 1 and yp == 1: tp += 1
+            elif yt == 0 and yp == 1: fp += 1
+            elif yt == 1 and yp == 0: fn += 1
+
+            elif yt == 0 and yp == 0: tn += 1
+
+        precision = tp / (tp + fp + 1e-10)
+        recall = tp / (tp + fn + 1e-10)
+        f1 = 2 * precision * recall / (precision + recall + 1e-10)
+
+        if "precision" in metrics: results["precision"] = precision
+        if "recall" in metrics: results["recall"] = recall
+        if "f1" in metrics: results["f1"] = f1
+
+    # === Regresión ===
     if any(m in metrics for m in ["mae", "mse", "r2"]):
-        try:
-            import sklearn.metrics as skm
-            y_true_np = np.array(y_true, dtype=float)
-            y_pred_np = np.array(y_pred, dtype=float)
-            if "mae" in metrics:
-                results["mae"] = float(skm.mean_absolute_error(y_true_np, y_pred_np))
-            if "mse" in metrics:
-                results["mse"] = float(skm.mean_squared_error(y_true_np, y_pred_np))
-            if "r2" in metrics:
-                results["r2"] = float(skm.r2_score(y_true_np, y_pred_np))
-        except Exception:
-            pass
+        n = len(y_true)
+        diffs = [(float(yt) - float(yp)) for yt, yp in zip(y_true, y_pred)]
+        abs_err = [abs(d) for d in diffs]
+        sq_err = [d * d for d in diffs]
 
-    # Retorno final
+        mae = sum(abs_err) / n
+        mse = sum(sq_err) / n
+        mean_true = sum(y_true) / n
+        ss_tot = sum((yt - mean_true) ** 2 for yt in y_true)
+        ss_res = sum((yt - yp) ** 2 for yt, yp in zip(y_true, y_pred))
+        r2 = 1 - (ss_res / (ss_tot + 1e-10))
+
+        if "mae" in metrics: results["mae"] = mae
+        if "mse" in metrics: results["mse"] = mse
+        if "r2" in metrics: results["r2"] = r2
+
+    # === Resultado final ===
     if detailed:
         return results
 
-    # Devuelve una sola métrica si no se solicita modo detallado
     main_metric = metrics[0]
     return results.get(main_metric, None)

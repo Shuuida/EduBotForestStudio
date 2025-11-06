@@ -89,9 +89,7 @@ class MiniMatrixOps:
 # ---------------------------
 # Utilities
 # ---------------------------
-# ============================================================
-# 🔢 Activation Utilities (global para MiniML)
-# ============================================================
+# Activation Utilities (global para MiniML)
 
 def clip(value: float, min_val: float = -60.0, max_val: float = 60.0) -> float:
     """Protege activaciones (sigmoid overflow)."""
@@ -423,7 +421,7 @@ class MiniLinearModel:
     def __init__(self, learning_rate=0.01, epochs=1000):
         self.learning_rate = float(learning_rate)
         self.epochs = int(epochs)
-        self.weights = None  # will contain [w0, w1, ..., wn] where w0..wn-1 features, wn = bias
+        self.weights = None  # contendrá [w0, w1, ..., wn] donde w0..wn-1 features, wn = bias
 
     def _unpack(self, dataset):
         X = [row[:-1] for row in dataset]
@@ -436,8 +434,8 @@ class MiniLinearModel:
             raise ValueError("Empty dataset")
         n_samples = len(X)
         n_features = len(X[0])
-        # init weights + bias
-        self.weights = [0.0] * n_features + [0.0]  # last element is bias
+        # weights iniciales + bias
+        self.weights = [0.0] * n_features + [0.0]  # el último elemento es bias
         for epoch in range(self.epochs):
             grads = [0.0] * (n_features + 1)
             for xi, yi in zip(X, y):
@@ -455,7 +453,7 @@ class MiniLinearModel:
             raise ValueError("Model not trained")
         preds = []
         for xi in X_list:
-            # xi can be list or scalar -> normalize
+            # xi puede ser una lista o un escalar -> normalizar
             if not isinstance(xi, (list, tuple)):
                 xi = [xi]
             pred = sum(w * xv for w, xv in zip(self.weights[:-1], xi)) + self.weights[-1]
@@ -493,29 +491,29 @@ class MiniSVM:
         self.learning_rate = float(learning_rate)
         self.lambda_param = float(lambda_param)
         self.n_iters = int(n_iters)
-        self.weights = None  # includes bias as last element
+        self.weights = None  # incluye bias como último elemento
 
     def fit(self, dataset):
         X = [row[:-1] for row in dataset]
         y = [row[-1] for row in dataset]
         n_samples = len(X)
         n_features = len(X[0]) if X else 0
-        # initialize weights + bias
+        # weights de inicialización + bias
         self.weights = [0.0] * (n_features + 1)
         for it in range(self.n_iters):
             for xi, yi in zip(X, y):
                 if not isinstance(yi, (int, float)):
                     raise ValueError("Labels must be numeric 1 or -1")
                 yi = 1 if yi > 0 else -1
-                # prediction margin
+                # margen de predicción
                 wx = sum(w * xv for w, xv in zip(self.weights[:-1], xi)) + self.weights[-1]
                 if yi * wx < 1:
-                    # update with hinge loss subgradient + regularization
+                    # actualización con subgradiente de pérdida de bias+ regularización
                     for j in range(n_features):
                         self.weights[j] = (1 - self.learning_rate * self.lambda_param) * self.weights[j] + self.learning_rate * yi * xi[j]
                     self.weights[-1] = (1 - self.learning_rate * self.lambda_param) * self.weights[-1] + self.learning_rate * yi  # bias
                 else:
-                    # just regularize
+                    # solo regulariza
                     for j in range(n_features + 1):
                         self.weights[j] = (1 - self.learning_rate * self.lambda_param) * self.weights[j]
 
@@ -559,7 +557,7 @@ class MiniNeuralNetwork:
         self.output_activation = "sigmoid"
         if seed is not None:
             random.seed(seed)
-        # small random initialization
+        # pequeña inicialización de random
         def rand_matrix(rows, cols):
             return [[(random.random() - 0.5) * 0.2 for _ in range(cols)] for _ in range(rows)]
         self.W1 = rand_matrix(self.n_hidden, self.n_inputs)
@@ -585,7 +583,7 @@ class MiniNeuralNetwork:
     def relu_derivative(self, x: float) -> float:
         return relu_derivative(x)
 
-    # Internal activation abstraction
+    # abstracción de activación interna
     def _activate(self, x: float, act: str):
         """Devuelve activación según 'act' (usa utilidades centrales)."""
         if act == 'sigmoid':
@@ -615,7 +613,7 @@ class MiniNeuralNetwork:
         # Capa oculta
         z1, a1 = [], []
         for i in range(self.n_hidden):
-            # Suma ponderada entrada → capa oculta
+            # Suma ponderada entrada -> capa oculta
             s = sum(self.W1[i][j] * x_row[j] for j in range(self.n_inputs)) + self.B1[i][0]
             si = self._activate(s, getattr(self, "hidden_activation", "sigmoid"))
             z1.append(s)
@@ -624,7 +622,7 @@ class MiniNeuralNetwork:
         # Capa de salida
         z2, a2 = [], []
         for k in range(self.n_outputs):
-            # Suma ponderada capa oculta → salida
+            # Suma ponderada capa oculta -> salida
             s = sum(self.W2[k][i] * a1[i] for i in range(self.n_hidden)) + self.B2[k][0]
             si = self._activate(s, getattr(self, "output_activation", "sigmoid"))
             z2.append(s)
@@ -634,8 +632,8 @@ class MiniNeuralNetwork:
         return a1, a2
 
     def fit(self, X, y):
-        # X: list of input lists; y: list of target lists (length n_outputs or scalars)
-        # normalize y shape
+        # X: lista de listas de entrada; y: lista de listas de destino (longitud n_outputs o escalares)
+        # normaliza la forma y
         y_formatted = []
         for yi in y:
             if isinstance(yi, (list, tuple)):
@@ -645,7 +643,7 @@ class MiniNeuralNetwork:
         for epoch in range(self.epochs):
             for xi, yi in zip(X, y_formatted):
                 a1, a2 = self._forward(xi)
-                # output error and delta
+                # output error y delta
                 delta2 = [0.0] * self.n_outputs
                 for k in range(self.n_outputs):
                     err = a2[k] - yi[k]
@@ -681,7 +679,7 @@ class MiniNeuralNetwork:
     def to_arduino_code(self, fn_name: str = "nn_predict"):
         # mantiene compatibilidad con código anterior, usa W1/W2/B1/B2
         lines = []
-        # convert weights/biases to arrays for code generation (two-layer case)
+        # convierte weights/biases a matrices para la generación de código (two-layer case)
         lines.append(f"// Auto-generated NN ({self.n_inputs} -> {self.n_hidden} -> {self.n_outputs})")
         # layer 1
         rows1 = len(self.W1)
