@@ -118,6 +118,13 @@ def train_random_forest(name: Optional[str] = None, dataset: Optional[List[List[
                 n_features=n_features, seed=seed
             )
             rf.fit(dataset)
+            
+            if hasattr(rf, 'trees'):
+                for tree in rf.trees:
+                    validate_tree_node(getattr(tree, 'root', None))
+            elif hasattr(rf, 'root'):
+                validate_tree_node(rf.root)
+
             _MODEL_REGISTRY[name] = {'mode': 'mini', 'model': rf, 'type': meta['type']}
         except Exception as e:
             raise RuntimeError(f"Error entrenando RandomForest interno: {e}")
@@ -218,6 +225,13 @@ def predict(name: Optional[str] = None, model: Optional[Any] = None, X: Optional
     if X is None:
         raise ValueError("predict requires 'X' input (list of samples)")
 
+    if _MODEL_REGISTRY.get(name, {}).get('mode') == 'mini':
+    # Asumir que model_obj es el modelo
+        if hasattr(model_obj, 'trees'):
+            for tree in model_obj.trees:
+                validate_tree_node(getattr(tree, 'root', None))
+        elif hasattr(model_obj, 'root'):
+            validate_tree_node(model_obj.root)   
     # Ejecutar predicción según tipo de modelo
     # Si el modelo es sklearn (posible), usa model.predict(X)
     try:
@@ -299,6 +313,12 @@ def load_model(name: str, path: str) -> None:
                 dt.root = root
                 rf.trees.append(dt)
             _MODEL_REGISTRY[name] = {'mode': 'mini', 'model': rf}
+            model = _MODEL_REGISTRY[name]['model']
+            if isinstance(model, ml_runtime.RandomForestClassifier):
+                for tree in model.trees:
+                    validate_tree_node(tree.root)
+            elif isinstance(model, ml_runtime.DecisionTreeClassifier) or isinstance(model, ml_runtime.DecisionTreeRegressor):
+                validate_tree_node(model.root)
             return
         if 'root' in data:
             dt = ml_runtime.DecisionTreeClassifier()
@@ -487,6 +507,12 @@ def train_decision_tree(name: Optional[str] = None, dataset: Optional[List[List[
             # Entrenamiento
             model.fit(dataset)
 
+            if hasattr(model, 'trees'):
+                for tree in model.trees:
+                    validate_tree_node(getattr(tree, 'root', None))
+            elif hasattr(model, 'root'):
+                validate_tree_node(model.root)
+
             # Registro en memoria
             _MODEL_REGISTRY[name] = {
                 'mode': 'mini',
@@ -541,12 +567,29 @@ def evaluate(y_true=None, y_pred=None, output: Optional[str] = None, metrics: st
         if hasattr(y_pred, "tolist") and callable(y_pred.tolist):
             y_pred = y_pred.tolist()
 
-        # Escoge métrica (por ahora solo accuracy)
+        # Manejo flexible de metrics (alineado con evaluate_ext)
+        if isinstance(metrics, (list, tuple)):
+            if len(metrics) > 1:
+                raise ValueError("evaluate() solo soporta una métrica única; usa evaluate_ext para múltiples.")
+            metrics = metrics[0] if metrics else "accuracy"
+        elif isinstance(metrics, str) and metrics.startswith("[") and metrics.endswith("]"):
+            # Parsear si es una cadena que representa una lista (e.g., "['accuracy']")
+            try:
+                import ast
+                parsed = ast.literal_eval(metrics)
+                if isinstance(parsed, list) and len(parsed) == 1:
+                    metrics = parsed[0]
+                else:
+                    metrics = "accuracy"  # Fallback
+            except Exception:
+                metrics = "accuracy"  # Fallback si parse falla
+
+        # Escoge métrica (ahora metrics es siempre un string simple)
         if metrics == "accuracy":
             score = ml_runtime.accuracy_score(y_true, y_pred)
         else:
             raise NotImplementedError(f"Métrica '{metrics}' no implementada")
-
+        
         # Resultado
         result = {"metrics": metrics, "score": score}
         if output:
@@ -647,3 +690,30 @@ def evaluate_ext(y_true=None, y_pred=None, metrics=None, output=None, detailed=F
 
     main_metric = metrics[0]
     return results.get(main_metric, None)
+
+
+def validate_tree_node(node: Any) -> None:
+    """
+    Valida recursivamente la estructura de un nodo de árbol (dict) para asegurar que sea correcta.
+    - Nodos internos: deben tener 'index' (int), 'value' (int/float), 'left' y 'right' (nodos válidos).
+    - Nodos hoja: no dict, debe ser int/float/str (clase o valor de regresión).
+    Lanza ValueError si es inválido.
+    """
+    if not isinstance(node, dict):
+        # Hoja: permite valores simples (clases o predicciones)
+        if not isinstance(node, (int, float, str)):
+            raise ValueError(f"Nodo hoja inválido: tipo {type(node).__name__} no soportado (esperado int/float/str).")
+        return
+    
+    # Nodo interno
+    if 'index' not in node or not isinstance(node['index'], int):
+        raise ValueError("Nodo interno inválido: falta 'index' o no es int.")
+    
+    if 'value' not in node or not isinstance(node['value'], (int, float)):
+        raise ValueError(f"Nodo interno inválido: 'value' debe ser int/float, pero es {type(node['value']).__name__}.")
+    
+    if 'left' not in node or 'right' not in node:
+        raise ValueError("Nodo interno inválido: falta 'left' o 'right'.")
+    
+    validate_tree_node(node['left'])
+    validate_tree_node(node['right'])
