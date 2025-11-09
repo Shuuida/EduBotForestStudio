@@ -618,6 +618,8 @@ def evaluate(y_true=None, y_pred=None, output: Optional[str] = None, metrics: st
         # Escoge métrica (ahora metrics es siempre un string simple)
         if metrics == "accuracy":
             score = ml_runtime.accuracy_score(y_true, y_pred)
+        elif metrics == "mse":
+            score = ml_runtime.mse(y_true, y_pred)
         else:
             raise NotImplementedError(f"Métrica '{metrics}' no implementada")
         
@@ -650,6 +652,8 @@ def evaluate_ext(y_true=None, y_pred=None, metrics=None, output=None, detailed=F
         float o dict: resultado principal o diccionario de métricas.
     """
     # Resolución de nombre si es string
+    results = {}
+
     if isinstance(y_pred, str):
         try:
             y_pred = globals().get(y_pred, [])
@@ -673,7 +677,7 @@ def evaluate_ext(y_true=None, y_pred=None, metrics=None, output=None, detailed=F
         except Exception:
             metrics = ["accuracy"]
 
-        results = {}
+        
 
     # Clasificación
     if any(m in metrics for m in ["accuracy", "precision", "recall", "f1"]):

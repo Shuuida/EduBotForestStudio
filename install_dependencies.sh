@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "==========================================================="
-echo "      EduBot Dependency Installer (Offline Ready)"
+echo "      EduBot Dependency Installer"
 echo "==========================================================="
 
 # --- Step 1: Check Python installation ---
@@ -36,40 +36,23 @@ cat > temp_requirements.txt <<EOF
 fastapi==0.115.2
 uvicorn==0.32.0
 RestrictedPython==8.1
-transformers==4.45.1
-sentencepiece==0.2.0
 PyYAML==6.0.2
 websockets==13.1
 flask==3.0.0
 requests==2.31.0
-PyYAML==6.0.2
 EOF
 
-# --- Step 6: Choose correct torch version ---
-echo
-echo "Detectando version de torch adecuada..."
-TORCH_VERSION="torch==2.9.0"
-
-if [[ "$PYVER" < "3.12" ]]; then
-    TORCH_VERSION="torch==2.3.0"
-fi
-if [[ "$PYVER" < "3.10" ]]; then
-    TORCH_VERSION="torch==1.13.1"
-fi
-
-echo "$TORCH_VERSION" >> temp_requirements.txt
-
-# --- Step 7: Install dependencies ---
+# --- Step 6: Install dependencies ---
 echo
 echo "Instalando dependencias..."
 pip install -r temp_requirements.txt --upgrade
 
-# --- Step 8: Cleanup ---
+# --- Step 7: Cleanup ---
 rm temp_requirements.txt
 
 echo
 echo "==========================================================="
-echo "EduBot listo para ejecutarse offline"
+echo "EduBot listo para ejecutarse"
 echo "Activa el entorno con:"
 echo "   source venv/bin/activate"
 echo "Y ejecuta el servidor con:"

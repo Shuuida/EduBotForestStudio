@@ -33,7 +33,7 @@ echo "Comprobando e instalando dependencias necesarias..."
 echo "--------------------------------------------------------------"
 
 # Lista de dependencias requeridas
-DEPS=("pandas" "numpy" "scikit-learn" "joblib" "matplotlib")
+DEPS=("scikit-learn")
 
 # Carpeta para logs
 LOG_DIR="$(dirname "$0")/logs"

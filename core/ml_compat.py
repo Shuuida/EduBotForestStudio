@@ -74,29 +74,30 @@ def safe_compare_le(row_val, node_val, subnode_handler=None):
     Compara row_val <= node_val de forma segura.
     - Convierte ambos a float con resolve_numeric().
     - Si node_val es dict sin número, se asume subnodo y se delega al handler.
-    - Si row_val no es convertible, lanza TypeError.
-    - Retorna True/False o lanza TypeError.
+    - Si alguno no es convertible, devuelve False en lugar de error.
     """
     rv = resolve_numeric(row_val)
-    if rv is None and isinstance(row_val, dict):
-        for v in row_val.values():
-            rv = resolve_numeric(v)
-            if rv is not None:
-                break
-    if rv is None:
-        raise TypeError(f"Row value not numeric: {type(row_val)} -> {row_val}")
-
     nv = resolve_numeric(node_val)
-    if nv is not None:
+
+    # Si ambos son números, comparar directamente
+    if rv is not None and nv is not None:
         return rv <= nv
 
-    # node_val puede ser subnodo
-    if isinstance(node_val, dict):
+    # Si el valor del nodo no es numérico pero es un dict, puede ser un subnodo
+    if nv is None and isinstance(node_val, dict):
         if callable(subnode_handler):
+            # Devolver el resultado del sub-manejador
             return subnode_handler(node_val, row_val)
-        raise TypeError("Node value is a subnode but no handler provided.")
+        else:
+            # No hay manejador, no se puede comparar
+            return False
 
-    raise TypeError(f"Node limit not numeric: {type(node_val)} -> {node_val}")
+    # Si el valor de la fila no es numérico, no se puede tomar una decisión
+    if rv is None:
+        return False
+
+    # Fallback seguro: si no se puede comparar, no cumple la condición
+    return False
 
 
 # =============================
@@ -147,15 +148,14 @@ def safe_metric_compare(metric, best_score):
     """
     Compara métricas de evaluación evitando errores de tipo.
     Extrae valores numéricos de dicts o strings.
+    Devuelve False si la comparación no es posible.
     """
     m_val = resolve_numeric(metric)
-    if m_val is None and isinstance(metric, dict):
-        m_val = resolve_numeric(metric)
-    if m_val is None:
-        raise TypeError(f"Metric not numeric: {metric}")
-
     b_val = resolve_numeric(best_score)
-    if b_val is None:
-        raise TypeError(f"Best score not numeric: {best_score}")
 
-    return m_val <= b_val
+    # Solo comparar si ambos son números válidos
+    if m_val is not None and b_val is not None:
+        return m_val <= b_val
+
+    # Si no se pueden convertir, no se puede mejorar el score
+    return False

@@ -155,15 +155,16 @@ def _eval(struct: Dict[str, Any], context: Dict[str, Any]):
 
     metrics = struct.get('metrics', ['accuracy'])
     output_var = struct.get('output', 'results')
+    detailed = struct.get('detailed', False)
 
     # Compatibilidad extendida: usa evaluate_ext si existe
     if hasattr(ml_manager, 'evaluate_ext'):
-        result = ml_manager.evaluate_ext(
+         result = ml_manager.evaluate_ext(
             y_true=y_true,
             y_pred=y_pred,
             metrics=metrics,
             output=output_var,
-            detailed=False
+            detailed=detailed
         )
     else:
         result = ml_manager.evaluate(y_true=y_true, y_pred=y_pred, output=output_var)

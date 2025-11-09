@@ -25,4 +25,4 @@ pytest.ini
 ml_debug_log.txt
 firmware_export.json
 .vscode/
-.idea/
+.idx/

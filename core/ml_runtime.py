@@ -127,18 +127,41 @@ def linear_derivative(_: float) -> float:
 # Decision tree helpers (CART)
 # ---------------------------
 def split_dataset(dataset: List[List[Any]], feature_index: int, value: Any) -> Tuple[List[List[Any]], List[List[Any]]]:
+    """
+    Divide un conjunto de datos en dos grupos (izquierda y derecha) basándose en el valor de una característica.
+    Esta función es robusta contra tipos de datos no numéricos para evitar errores de tipo en tiempo de ejecución.
+    """
     left, right = [], []
+    
+    # Determinar si el valor de división es un número válido.
+    is_value_numeric = isinstance(value, (int, float))
+
     for row in dataset:
         try:
-            if row[feature_index] <= value:
-                left.append(row)
+            # Si el índice está fuera de rango, la fila no se puede dividir.
+            if feature_index >= len(row):
+                right.append(row)
+                continue
+
+            row_feature = row[feature_index]
+            is_row_feature_numeric = isinstance(row_feature, (int, float))
+
+            # Solo se puede realizar una comparación numérica si ambos valores son números.
+            if is_value_numeric and is_row_feature_numeric:
+                if row_feature <= value:
+                    left.append(row)
+                else:
+                    right.append(row)
+            # Si el valor de división o el de la fila no son numéricos, la comparación es inválida. 
+            # Se asigna la fila a la derecha por defecto. Esto asegura que la división
+            # no será "pura" y el algoritmo la descartará por tener una puntuación de impureza alta.
             else:
                 right.append(row)
+        
         except Exception:
-            if str(row[feature_index]) <= str(value):
-                left.append(row)
-            else:
-                right.append(row)
+            # Ante cualquier otro error inesperado, se asigna la fila a la derecha como medida de seguridad.
+            right.append(row)
+            
     return left, right
 
 def gini_index(groups: Union[List[List[List[Any]]], Tuple[List[List[Any]], List[List[Any]]]], classes: List[Any]) -> float:
@@ -189,30 +212,55 @@ def to_terminal_reg(group: List[List[Any]]):
 def get_split_class(dataset: List[List[Any]], n_features: Optional[int] = None):
     class_values = list(set(row[-1] for row in dataset))
     b_index, b_value, b_score, b_groups = None, None, float('inf'), None
+    
+    if not dataset or not dataset[0]:
+        return {'index': b_index, 'value': b_value, 'groups': b_groups}
+        
     features = list(range(len(dataset[0]) - 1))
     if n_features is not None and n_features > 0:
         features = random.sample(features, max(1, min(len(features), n_features)))
+        
     for index in features:
         values = set(row[index] for row in dataset)
-        for value in values:
+        
+        # Filtrar valores para asegurar que solo los números se usen para las divisiones.
+        # Esto previene que un 'dict' o 'str' sea usado como umbral numérico.
+        numeric_values = {v for v in values if isinstance(v, (int, float))}
+        
+        for value in numeric_values:
             groups = split_dataset(dataset, index, value)
             gini = gini_index(groups, class_values)
+            
+            # Esta comparación ahora es segura, porque 'gini' y 'b_score' son floats garantizados.
             if gini < b_score:
                 b_index, b_value, b_score, b_groups = index, value, gini, groups
+                
     return {'index': b_index, 'value': b_value, 'groups': b_groups}
 
 def get_split_regression(dataset: List[List[Any]], n_features: Optional[int] = None):
     b_index, b_value, b_score, b_groups = None, None, float('inf'), None
+
+    if not dataset or not dataset[0]:
+        return {'index': b_index, 'value': b_value, 'groups': b_groups}
+
     features = list(range(len(dataset[0]) - 1))
     if n_features is not None and n_features > 0:
         features = random.sample(features, max(1, min(len(features), n_features)))
+
     for index in features:
         values = set(row[index] for row in dataset)
-        for value in values:
+        
+        # Aplicar el mismo filtro para la regresión.
+        numeric_values = {v for v in values if isinstance(v, (int, float))}
+        
+        for value in numeric_values:
             groups = split_dataset(dataset, index, value)
             score = mse_index(groups)
+
+            # Esta comparación también es segura ahora.
             if score < b_score:
                 b_index, b_value, b_score, b_groups = index, value, score, groups
+                
     return {'index': b_index, 'value': b_value, 'groups': b_groups}
 
 def build_tree_class(node: Dict[str, Any], max_depth: int, min_size: int, n_features: Optional[int]):
@@ -283,54 +331,40 @@ class DecisionTreeClassifier:
         self.root = root
 
     def _predict_row(self, node, row):
+        # Si el nodo actual no es un diccionario, es un valor terminal (una predicción).
         if not isinstance(node, dict):
             return node
-        idx = node.get('index')
-        if idx is None:
-            # hoja: node['left'] o node['right'] o node.get('label') según implementación
+
+        index = node.get('index')
+        value = node.get('value')
+
+        # Si el nodo no tiene un índice de característica, es un nodo terminal.
+        # Se devuelve el valor de la rama 'left' como predicción final.
+        if index is None:
+            # La predicción es el valor terminal, que no debería ser un dict.
             if 'left' in node and not isinstance(node['left'], dict):
                 return node['left']
-            if 'right' in node and not isinstance(node['right'], dict):
-                return node['right']
-            # fallback: si contiene 'label' o 'class'
-            if 'label' in node:
-                return node['label']
-            if 'class' in node:
-                return node['class']
+            # Fallback por si la estructura del nodo es inesperada.
             return node
-    # obtener valor de fila en la posición idx
-    # si row no es indexable numéricamente (p.ej. diccionario), adaptamos:
-        if isinstance(row, dict):
-            # intentamos tomar por índice si el dict usa índices numericos como claves o por nombre
-            if idx in row:
-                row_val = row[idx]
-            else:
-                # intentar convertir idx a str
-                row_val = row.get(str(idx), None)
-                if row_val is None:
-                    # intentar tomar primer valor numérico de row
-                    for vv in row.values():
-                        if isinstance(vv, (int, float)):
-                            row_val = vv
-                            break
-        else:
-            # row es secuencia indexable
-            row_val = row[idx]
 
-        val = node.get('value')
-        # FIX: Protección contra nodos con 'value' tipo dict
-        if isinstance(val, dict):
-            # Si el valor del nodo es un subárbol dict, continuar recorriendo
-            return self._predict_row(val, row)
+        # El valor de un nodo ('value') puede ser a su vez un sub-árbol (dict). 
+        # No podemos comparar un float con un dict.
+        # Si 'value' es un diccionario, significa que debemos seguir recorriendo el árbol
+        # a través de este sub-nodo.
+        if isinstance(value, dict):
+            return self._predict_row(value, row)
 
+        # Si el valor de la característica en la fila actual no existe o no es un número,
+        # no se puede hacer una comparación válida. Se sigue por la derecha como fallback.
         try:
-        # si val es subnodo, safe_le delegará a predict_fn_for_subnode (self._predict_row)
-            decision = safe_compare_le(row[idx], node.get("value"), subnode_handler=lambda subnode, _: self._predict_row(subnode, row))
-        except TypeError as e:
-            # registrar y relanzar con contexto para debugging (fail-fast)
-            raise TypeError(f"Error during tree comparison at node index={idx}: {e}")
+            row_feature = row[index]
+            if not isinstance(row_feature, (int, float)):
+                return self._predict_row(node.get('right'), row)
+        except (IndexError, KeyError):
+            return self._predict_row(node.get('right'), row)
 
-        if decision:
+        # Ahora que sabemos que ambos son números, la comparación es segura.
+        if row_feature <= value:
             return self._predict_row(node.get('left'), row)
         else:
             return self._predict_row(node.get('right'), row)

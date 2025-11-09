@@ -56,23 +56,11 @@ echo Creando archivo temporal de dependencias...
 echo fastapi==0.115.2
 echo uvicorn==0.32.0
 echo RestrictedPython==8.1
-echo transformers==4.45.1
-echo sentencepiece==0.2.0
 echo PyYAML==6.0.2
 echo websockets==13.1
 echo flask==3.0.0
 echo requests==2.31.0
-echo PyYAML==6.0.2
-echo pytest==8.0.0
 ) > temp_requirements.txt
-
-:: --- Detect Torch version ---
-echo.
-echo Detectando version de torch adecuada...
-set TORCH_VERSION=torch==2.9.0
-if %PYMAJOR%.%PYMINOR% LSS 3.10 set TORCH_VERSION=torch==2.3.0
-if %PYMAJOR%.%PYMINOR% LSS 3.9 set TORCH_VERSION=torch==1.13.1
-echo %TORCH_VERSION% >> temp_requirements.txt
 
 :: --- Install dependencies ---
 echo.
