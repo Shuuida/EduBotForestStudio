@@ -34,7 +34,7 @@ echo Comprobando e instalando dependencias necesarias...
 echo --------------------------------------------------------------
 
 :: Lista de dependencias requeridas
-set DEPS=scikit-learn
+set DEPS=scikit-learn, joblib
 
 :: Crear carpeta logs si no existe
 if not exist "%~dp0logs" mkdir "%~dp0logs"

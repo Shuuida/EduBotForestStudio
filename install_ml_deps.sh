@@ -33,7 +33,7 @@ echo "Comprobando e instalando dependencias necesarias..."
 echo "--------------------------------------------------------------"
 
 # Lista de dependencias requeridas
-DEPS=("scikit-learn")
+DEPS=("scikit-learn" "joblib")
 
 # Carpeta para logs
 LOG_DIR="$(dirname "$0")/logs"
