@@ -209,10 +209,10 @@ def serialize_model(model_obj, metadata=None):
             data["repr"] = f"{type(model_obj).__name__} - MiniML structure"
             return data
 
-                # --- NUEVOS MODELOS MINI ML ---
+        # NUEVOS MODELOS MINI ML
         elif hasattr(model_obj, "coefficients") and hasattr(model_obj, "intercept"):
             data["framework"] = "MiniML"
-            data["type"] = "LinearRegression"
+            data["type"] = "MiniLinearModel"
             data["coefficients"] = getattr(model_obj, "coefficients", [])
             data["intercept"] = getattr(model_obj, "intercept", 0.0)
             data["repr"] = "MiniLinearModel - MiniML"
@@ -220,19 +220,21 @@ def serialize_model(model_obj, metadata=None):
 
         elif hasattr(model_obj, "kernel") and hasattr(model_obj, "weights"):
             data["framework"] = "MiniML"
-            data["type"] = "SVM"
+            data["type"] = "MiniSVM"
             data["kernel"] = getattr(model_obj, "kernel", "linear")
             data["weights"] = getattr(model_obj, "weights", [])
             data["bias"] = getattr(model_obj, "bias", 0.0)
+            data["support_vectors"] = getattr(model_obj, "support_vectors", []) # <-- AÑADIDO
             data["repr"] = "MiniSVM - MiniML"
             return data
 
         elif hasattr(model_obj, "layers") and hasattr(model_obj, "weights"):
             data["framework"] = "MiniML"
-            data["type"] = "NeuralNetwork"
+            data["type"] = "MiniNeuralNetwork"
             data["layers"] = getattr(model_obj, "layers", [])
             data["weights"] = getattr(model_obj, "weights", [])
             data["biases"] = getattr(model_obj, "biases", [])
+            data["activations"] = getattr(model_obj, "activations", []) # <-- AÑADIDO
             data["repr"] = "MiniNeuralNetwork - MiniML"
             return data
 
@@ -260,8 +262,27 @@ def deserialize_model(data):
         # sklearn
         if framework == "sklearn":
             from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
-            # Nota: sólo reimportamos estructura básica, los pesos deben ser reentrenados
-            model = {"info": "sklearn model stub", "params": data.get("params")}
+            
+            # CORRECCIÓN: Extraemos la representación del modelo
+            model_repr = data.get("repr", "")
+            params = data.get("params", {})
+
+            # Reconstruir el objeto modelo basándose en la representación
+            # (Esto es necesario porque el JSON no guarda el tipo exacto)
+            if "DecisionTreeRegressor" in model_repr:
+                model = DecisionTreeRegressor()
+            elif "DecisionTreeClassifier" in model_repr:
+                model = DecisionTreeClassifier()
+            # ... (Añadir aquí más modelos sklearn a futuro si son soportados por el framework)
+            else:
+                # Si no se reconoce, devolver el stub como antes para evitar un crash
+                model = {"info": "sklearn model stub", "params": params, "error": "Unknown model type in repr"}
+                return model # Salir temprano si no se puede reconstruir
+
+            # Si el modelo se creó, re-aplicar sus parámetros
+            if params and hasattr(model, "set_params"):
+                model.set_params(**params)
+            # Ahora 'model' es un objeto sklearn real, no un dict
 
         # MiniML
         elif framework == "MiniML":
@@ -281,14 +302,14 @@ def deserialize_model(data):
 
             # LinearRegression
             elif "linear" in model_type or "regression" in model_type:
-                model = ml_runtime.MiniLinearModel()  # Corregido: era LinearRegression
+                model = ml_runtime.MiniLinearModel()  # Corregido: era MiniLinearModel
                 model.coefficients = data.get("coefficients", [])
                 model.intercept = data.get("intercept", 0.0)
                 return model
 
             # SVM
             elif "svm" in model_type:
-                model = ml_runtime.MiniSVM()  # Corregido: era SupportVectorMachine
+                model = ml_runtime.MiniSVM()  # Corregido: era MiniSVM
                 model.support_vectors = data.get("support_vectors", [])
                 model.weights = data.get("weights", [])
                 model.bias = data.get("bias", 0.0)
@@ -296,10 +317,11 @@ def deserialize_model(data):
 
             # Neural Network
             elif "neural" in model_type or "network" in model_type:
-                model = ml_runtime.MiniNeuralNetwork()  # Corregido: era NeuralNetwork
+                model = ml_runtime.MiniNeuralNetwork()  # Corregido: era MiniNeuralNetwork
                 model.weights = data.get("weights", [])
                 model.biases = data.get("biases", [])
                 model.activations = data.get("activations", [])
+                model.layers = data.get("layers", []) # <-- AÑADIDO
                 return model
 
         return {"framework": framework or "unknown", "repr": repr(data)}

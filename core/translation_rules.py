@@ -93,7 +93,8 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
 
     # print
     if t == "print":
-        return _indent(f"print({_safe_repr_value(block.get('value', ''))})", level)
+        # El 'value' ya es la expresión correcta (ej: "result" o "'hello'")
+        return _indent(f"print({block.get('value', '')})", level)
 
     # asignación
     if t == "assign":
