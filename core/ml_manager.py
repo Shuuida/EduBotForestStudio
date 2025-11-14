@@ -772,7 +772,8 @@ def evaluate_accuracy(name: str, X: List[List[Any]], y_true: List[Any]) -> float
 def train_decision_tree(name: Optional[str] = None, dataset: Optional[List[List[Any]]] = None, *,
                         model_name: Optional[str] = None,
                         max_depth: int = 10, min_size: int = 1,
-                        n_features: Optional[int] = None, seed: Optional[int] = None
+                        n_features: Optional[int] = None, seed: Optional[int] = None,
+                        backend: Optional[str] = None  # <-- 1. AÑADIR NUEVO PARÁMETRO
                         ) -> Dict[str, Any]:
     """
     Entrena un árbol de decisión inteligente que puede ser de clasificación o regresión.
@@ -786,13 +787,11 @@ def train_decision_tree(name: Optional[str] = None, dataset: Optional[List[List[
         min_size (int, optional): Tamaño mínimo de un nodo para dividir. Defaults to 1.
         n_features (Optional[int], optional): Número de características a considerar en cada división. Defaults to None.
         seed (Optional[int], optional): Semilla para la generación de números aleatorios. Defaults to None.
+        backend (Optional[str], optional): Backend a forzar ('mini' o 'sklearn'). 
+                                           Si es None, usa el modo inteligente. Defaults to None.
 
     Returns:
         Dict[str, Any]: Metadatos del entrenamiento y el modelo.
-
-    Raises:
-        ValueError: Si `name` o `dataset` son None.
-        RuntimeError: Si ocurre un error durante el entrenamiento del modelo.
     """
     # Soporte retrocompatible para `model_name`
     name = model_name or name
@@ -803,14 +802,30 @@ def train_decision_tree(name: Optional[str] = None, dataset: Optional[List[List[
         raise ValueError("El dataset no puede ser None.")
 
     start = time.time()
-    mode = available_mode()
+
+    # LÓGICA DE SELECCIÓN DE BACKEND MEJORADA
+    selected_mode = "mini" # Default
+    if backend == "sklearn":
+        if not _sklearn_available:
+            raise ImportError("Scikit-learn backend solicitado pero no está disponible.")
+        selected_mode = "sklearn"
+    elif backend == "mini":
+        selected_mode = "mini"
+    elif backend is None:
+        # Lógica "inteligente" original
+        selected_mode = available_mode()
+    else:
+        raise ValueError(f"Backend '{backend}' no reconocido. Use 'sklearn', 'mini', or None.")
+
+    mode = selected_mode # Usar 'mode' para el resto de la función
+    
     is_regression = _is_regression_dataset(dataset)
     meta = {'mode': mode, 'type': 'regression' if is_regression else 'classification'}
 
     X = [row[:-1] for row in dataset] # Características
     y = [row[-1] for row in dataset]  # Target
 
-    if mode == "sklearn":
+    if mode == "sklearn": 
         try:
             if is_regression:
                 from sklearn.tree import DecisionTreeRegressor as SKDecisionTree
@@ -822,7 +837,7 @@ def train_decision_tree(name: Optional[str] = None, dataset: Optional[List[List[
             _MODEL_REGISTRY[name] = {'mode': 'sklearn', 'model': model, 'type': meta['type']}
         except Exception as e:
             raise RuntimeError(f"Error entrenando árbol sklearn: {e}")
-    else:
+    else: # Esto ahora cubre mode == "mini"
         try:
             # Selección automática del modelo según el tipo detectado
             if is_regression:
@@ -854,7 +869,6 @@ def train_decision_tree(name: Optional[str] = None, dataset: Optional[List[List[
     meta['time_seconds'] = time.time() - start
     model = _MODEL_REGISTRY[name]['model']
     return {'meta': meta, 'model': model, 'model_name': name}
-
 
 # -------------------------
 def save_registry(file='registry.json'):

@@ -79,7 +79,8 @@ def run_pipeline(mode="classification"):
             model_name=f"tree_{mode}",
             dataset=data,
             max_depth=3,
-            min_size=1
+            min_size=1,
+            backend="mini"  # <-- FORZAR EL BACKEND 'MINI' PARA DEPURACIÓN
         )
         print("✅ Entrenamiento completado:", result)
     except Exception as e:

@@ -199,8 +199,13 @@ def to_terminal_class(group: List[List[Any]]):
     for row in group:
         label = row[-1]
         outcomes[label] = outcomes.get(label, 0) + 1
+    # CORRECCIÓN
     if not outcomes:
-        return None
+        # Un grupo vacío no puede tener una clase 'max'.
+        # Devolver None rompe la validación (un nodo hoja no puede ser None).
+        # Devolvemos '0' (int) como un valor terminal de fallback seguro.
+        # Esto es análogo a to_terminal_reg que devuelve 0.0.
+        return 0
     return max(outcomes.items(), key=lambda x: x[1])[0]
 
 def to_terminal_reg(group: List[List[Any]]):
@@ -364,7 +369,7 @@ class DecisionTreeClassifier:
             return self._predict_row(node.get('right'), row)
 
         # Ahora que sabemos que ambos son números, la comparación es segura.
-        if row_feature <= value:
+        if safe_compare_le(row_feature, value):
             return self._predict_row(node.get('left'), row)
         else:
             return self._predict_row(node.get('right'), row)
