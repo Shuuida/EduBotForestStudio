@@ -1,13 +1,18 @@
 """
-EduBot MiniML Runtime - Full Diagnostic Test
-============================================
+EduBot MiniML Runtime - Full Diagnostic Test (CON VALIDACIÓN DE EXPORTACIÓN A C)
+==================================================================================
 
 🔍 Propósito:
 - Validar todas las clases de ml_runtime (DecisionTree, RandomForest, LinearRegression, SVM, NeuralNetwork)
 - Comprobar estabilidad numérica y funcionamiento del backpropagation multicapa
+- Validar la generación de código `to_arduino_code` para todos los modelos exportables.
 - Exportar pesos y matrices de la red neuronal en formato JSON legible para firmware C / Arduino / MegaPi
 
 🧩 Dependencias: Ninguna (sin pytest, sin numpy)
+
+CORRECCIÓN APLICADA: Se ha hecho más inteligente `_smoke_test_c_code` para
+validar la intención (ej. 'while' para árboles, '[]' para arrays) y
+no fallar en funciones 'float' o 'void' que no contengan 'int'.
 """
 
 import json
@@ -50,6 +55,47 @@ def export_to_firmware_json(model, filename="firmware_export.json"):
 
 
 # ============================================================
+# 🧰 <--- TEST DE HUMO C CORREGIDO --->
+# ============================================================
+
+def _smoke_test_c_code(c_code: str, model_name: str):
+    """
+    Realiza un 'smoke test' inteligente en el código C generado.
+    """
+    print(f"\n--- ⚡ VALIDANDO EXPORTACIÓN C: {model_name} ---")
+    if not isinstance(c_code, str) or len(c_code) < 40:
+        raise ValueError(f"Test de Humo C FALLIDO: El código C para {model_name} es demasiado corto o inválido.")
+
+    # --- INICIO DE LA LÓGICA CORREGIDA ---
+    
+    # 1. Palabras clave base que esperamos ver
+    if "float" not in c_code:
+        raise ValueError(f"Test de Humo C FALLIDO: Código de {model_name} no contiene 'float'.")
+    if "(" not in c_code or ")" not in c_code:
+        raise ValueError(f"Test de Humo C FALLIDO: Código de {model_name} no parece tener una función '()'.")
+
+    # 2. O es una función que retorna (return) o es void
+    if "return" not in c_code and "void" not in c_code:
+         raise ValueError(f"Test de Humo C FALLIDO: Código de {model_name} no contiene 'return' ni 'void'.")
+
+    # 3. Los árboles (DecisionTree, RandomForest) DEBEN ser iterativos (usar 'while')
+    if ("Tree" in model_name or "Forest" in model_name) and "while" not in c_code:
+        raise ValueError(f"Test de Humo C FALLIDO: El código de {model_name} NO es iterativo (no se encontró 'while').")
+
+    # 4. Los modelos lineales/SVM/NN DEBEN definir un array
+    if ("Linear" in model_name or "SVM" in model_name or "Neural" in model_name) and "]" not in c_code:
+        raise ValueError(f"Test de Humo C FALLIDO: El código de {model_name} no parece definir un array '[]'.")
+        
+    # --- FIN DE LA LÓGICA CORREGIDA ---
+    
+    print(f"✅ Validación C de {model_name} superada.")
+    print("-------------------------------------------------")
+    # Imprime un fragmento del código
+    print("\n".join(c_code.splitlines()[:10]) + "\n[...]")
+    print("-------------------------------------------------")
+
+
+# ============================================================
 # 🌳 Árboles de decisión y bosques
 # ============================================================
 
@@ -65,7 +111,12 @@ def test_decision_tree():
         model = ml_runtime.DecisionTreeClassifier(max_depth=3, min_size=1)
         model.fit(dataset)
         preds = model.predict([[2.5, 2.3], [3.7, 3.9]])
-        print("Predicciones:", preds)
+        print("Predicciones Python:", preds)
+        
+        # Test de exportación a C
+        c_code = model.to_arduino_code()
+        _smoke_test_c_code(c_code, "DecisionTreeClassifier")
+        
     except Exception as e:
         print("❌ Error:", e)
         traceback.print_exc()
@@ -80,10 +131,15 @@ def test_random_forest():
         [3.9, 4.0, 1],
     ]
     try:
-        model = ml_runtime.RandomForestClassifier(n_trees=3, max_depth=3, min_size=1)
+        model = ml_runtime.RandomForestClassifier(n_trees=3, max_depth=3, min_size=1, seed=42)
         model.fit(dataset)
         preds = model.predict([[2.5, 2.3], [3.7, 3.9]])
-        print("Predicciones:", preds)
+        print("Predicciones Python:", preds)
+        
+        # Test de exportación a C
+        c_code = model.to_arduino_code()
+        _smoke_test_c_code(c_code, "RandomForestClassifier")
+        
     except Exception as e:
         print("❌ Error:", e)
         traceback.print_exc()
@@ -94,7 +150,7 @@ def test_random_forest():
 # ============================================================
 
 def test_linear_regression():
-    print("\n--- 📈 TEST: LinearRegression ---")
+    print("\n--- 📈 TEST: LinearRegression (MiniLinearModel) ---")
     dataset = [
         [1.0, 2.0],
         [2.0, 3.9],
@@ -105,8 +161,13 @@ def test_linear_regression():
         model = ml_runtime.MiniLinearModel()
         model.fit(dataset)
         preds = model.predict([[5.0], [6.0]])
-        print("Predicciones:", preds)
+        print("Predicciones Python:", preds)
         print("Coeficientes:", getattr(model, 'weights', None))
+        
+        # Test de exportación a C
+        c_code = model.to_arduino_code()
+        _smoke_test_c_code(c_code, "MiniLinearModel")
+        
     except Exception as e:
         print("❌ Error:", e)
         traceback.print_exc()
@@ -128,8 +189,13 @@ def test_svm():
         model = ml_runtime.MiniSVM(learning_rate=0.01, lambda_param=0.01, n_iters=500)
         model.fit(dataset)
         preds = model.predict([[2.5, 2.3], [3.7, 3.9]])
-        print("Predicciones:", preds)
+        print("Predicciones Python:", preds)
         print("Vector de pesos:", getattr(model, 'weights', None))
+        
+        # Test de exportación a C
+        c_code = model.to_arduino_code()
+        _smoke_test_c_code(c_code, "MiniSVM")
+        
     except Exception as e:
         print("❌ Error:", e)
         traceback.print_exc()
@@ -151,17 +217,17 @@ def test_neural_network():
             n_outputs=1,
             learning_rate=0.1,
             epochs=3000,
+            seed=42
         )
         model.fit(X, y)
         preds = model.predict(X)
-        print("Predicciones XOR:", preds)
+        print("Predicciones XOR (Python):", preds)
 
         # Diagnóstico extendido
         print("\n🔍 Diagnóstico de Backpropagation:")
-        print("W1:", model.W1)
-        print("W2:", model.W2)
-        print("B1:", model.B1)
-        print("B2:", model.B2)
+        # Imprime solo una muestra para no saturar la consola
+        print("W1 (muestra):", [row[:2] for row in model.W1[:2]])
+        print("W2 (muestra):", [row[:2] for row in model.W2[:2]])
 
         # Verificación de control de overflow sigmoid
         test_vals = [-100, -10, 0, 10, 100]
@@ -174,8 +240,12 @@ def test_neural_network():
         mse = sum((preds[i][0] - y[i][0]) ** 2 for i in range(len(y))) / len(y)
         print(f"\nMSE promedio: {mse:.6f}")
 
-        # Exportar pesos a firmware JSON
+        # Exportar pesos a firmware JSON (para NN, esto es diferente de C)
         export_to_firmware_json(model, "firmware_export.json")
+        
+        # Test de exportación a C
+        c_code = model.to_arduino_code()
+        _smoke_test_c_code(c_code, "MiniNeuralNetwork")
 
     except Exception as e:
         print("❌ Error:", e)
@@ -189,6 +259,7 @@ def test_neural_network():
 def main():
     print("============================================================")
     print("🧩 Iniciando test extendido de ml_runtime.py (FULL MODE)")
+    print("   (Incluye validación de exportación a C)")
     print("============================================================")
 
     test_decision_tree()
@@ -198,7 +269,7 @@ def main():
     test_neural_network()
 
     print("\n============================================================")
-    print("✅ TEST COMPLETO FINALIZADO SIN ERRORES CRÍTICOS")
+    print("✅ TEST COMPLETO FINALIZADO (INCLUYENDO EXPORTACIÓN A C)")
     print("============================================================")
 
 

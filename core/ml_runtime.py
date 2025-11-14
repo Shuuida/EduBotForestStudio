@@ -382,28 +382,70 @@ class DecisionTreeClassifier:
             preds.append(self._predict_row(self.root, row))
         return preds
 
+    # <--- Modificación: Función `to_arduino_code` corregido para evitar anidados de if/else que causen un desbordamiento de pila (Stack Overflow)
     def to_arduino_code(self, fn_name: str = "predict_row") -> str:
-        def node_code(n, level=1):
-            pad = "    " * level
-            if not isinstance(n, dict):
-                return pad + f"return {repr(n)};\n"
-            idx = n.get('index')
-            if idx is None:
-                left = n.get('left')
-                if not isinstance(left, dict):
-                    return pad + f"return {repr(left)};\n"
-                # fallback continue traversal
-            val = n.get('value')
-            s = pad + f"if (row[{idx}] <= {repr(val)}) " + "{\n"
-            s += node_code(n.get('left'), level+1)
-            s += pad + " } else {\n"
-            s += node_code(n.get('right'), level+1)
-            s += pad + "}\n"
-            return s
-        body = f"int {fn_name}(float row[]) {{\n"
-        body += node_code(self.root, 1)
-        body += "}\n"
-        return body
+        """
+        Genera código C iterativo (seguro para stack) usando arrays aplanados.
+        """
+        # Import local para evitar dependencia circular a nivel de módulo
+        try:
+            from storage import ml_exporter
+        except ImportError:
+            print("[WARN] No se pudo importar storage.ml_exporter. Usando shim de 'core' si existe.")
+            try:
+                from core import ml_exporter # Fallback si la estructura es diferente
+            except ImportError:
+                return "// Error: No se pudo encontrar 'ml_exporter' para aplanar el árbol."
+
+        if self.root is None:
+            return "// Error: El modelo no está entrenado (root is None)."
+        
+        try:
+            flat_tree = ml_exporter._flatten_tree_to_arrays(self.root)
+        except Exception as e:
+            return f"// Error durante el aplanamiento del árbol: {e}"
+
+        # Helper para formatear arrays de C
+        def format_c_array(name, arr, dtype="int"):
+            if not arr:
+                return f"{dtype} {name}[1] = {{0}};" # Evitar arrays vacíos
+            values = ", ".join(map(str, arr))
+            return f"{dtype} {name}[{len(arr)}] = {{{values}}};"
+
+        # Generar arrays C
+        code = [
+            "// EduBot ML: Decision Tree Classifier (Iterative C Export)",
+            "// Exportación segura con uso de pila constante (O(1))",
+            format_c_array("tree_feature_index", flat_tree['feature_index'], "int"),
+            format_c_array("tree_threshold", flat_tree['threshold'], "float"),
+            format_c_array("tree_left_child", flat_tree['left_child'], "int"),
+            format_c_array("tree_right_child", flat_tree['right_child'], "int"),
+            format_c_array("tree_value", flat_tree['value'], "int") + " // Predicciones (clases)",
+            ""
+        ]
+        
+        # Generar función C iterativa
+        func = [
+            f"int {fn_name}(float row[]) {{",
+            "  int node_index = 0; // Iniciar en el nodo raíz (índice 0)",
+            "",
+            "  // Recorrer el árbol mientras no estemos en un nodo hoja",
+            "  // Un nodo hoja se marca con feature_index == -1",
+            "  while (tree_feature_index[node_index] != -1) {",
+            "    if (row[tree_feature_index[node_index]] <= tree_threshold[node_index]) {",
+            "      node_index = tree_left_child[node_index];",
+            "    } else {",
+            "      node_index = tree_right_child[node_index];",
+            "    }",
+            "  }",
+            "",
+            "  // Salimos del bucle, node_index apunta a una hoja.",
+            "  // Devolver el valor (clase) de esa hoja.",
+            "  return tree_value[node_index];",
+            "}"
+        ]
+        code.extend(func)
+        return "\n".join(code)
 
 class DecisionTreeRegressor(DecisionTreeClassifier):
     def fit(self, dataset: List[List[Any]]):
@@ -424,6 +466,64 @@ class DecisionTreeRegressor(DecisionTreeClassifier):
             p = self._predict_row(self.root, row)
             preds.append(float(p))
         return preds
+
+    # <--- Nuevo: Override de `to_arduino_code` para Regresor
+    def to_arduino_code(self, fn_name: str = "predict_row") -> str:
+        """
+        Genera código C iterativo (seguro para stack) para regresión (devuelve float).
+        """
+        # Import local
+        try:
+            from storage import ml_exporter
+        except ImportError:
+            try:
+                from core import ml_exporter
+            except ImportError:
+                return "// Error: No se pudo encontrar 'ml_exporter' para aplanar el árbol."
+
+        if self.root is None:
+            return "// Error: El modelo no está entrenado (root is None)."
+        
+        try:
+            flat_tree = ml_exporter._flatten_tree_to_arrays(self.root)
+        except Exception as e:
+            return f"// Error durante el aplanamiento del árbol: {e}"
+
+        # Helper para formatear arrays de C
+        def format_c_array(name, arr, dtype="int"):
+            if not arr:
+                return f"{dtype} {name}[1] = {{0}};"
+            values = ", ".join(map(str, arr))
+            return f"{dtype} {name}[{len(arr)}] = {{{values}}};"
+
+        # Generar arrays C
+        code = [
+            "// EduBot ML: Decision Tree Regressor (Iterative C Export)",
+            "// Exportación segura con uso de pila constante (O(1))",
+            format_c_array("tree_feature_index", flat_tree['feature_index'], "int"),
+            format_c_array("tree_threshold", flat_tree['threshold'], "float"),
+            format_c_array("tree_left_child", flat_tree['left_child'], "int"),
+            format_c_array("tree_right_child", flat_tree['right_child'], "int"),
+            format_c_array("tree_value", flat_tree['value'], "float") + " // Predicciones (valores)",
+            ""
+        ]
+        
+        # Generar función C iterativa
+        func = [
+            f"float {fn_name}(float row[]) {{", # <-- Devuelve float
+            "  int node_index = 0;",
+            "  while (tree_feature_index[node_index] != -1) {",
+            "    if (row[tree_feature_index[node_index]] <= tree_threshold[node_index]) {",
+            "      node_index = tree_left_child[node_index];",
+            "    } else {",
+            "      node_index = tree_right_child[node_index];",
+            "    }",
+            "  }",
+            "  return tree_value[node_index];",
+            "}"
+        ]
+        code.extend(func)
+        return "\n".join(code)
 
 # ---------------------------
 # Random Forest
@@ -464,6 +564,120 @@ class RandomForestClassifier:
             votes.append(max(agg.items(), key=lambda x: x[1])[0])
         return votes
 
+    # <--- Nuevo: Implementación de `to_arduino_code` para RandomForestClassifier
+    def to_arduino_code(self, fn_name: str = "predict_row") -> str:
+        """
+        Genera código C iterativo (seguro para stack) para el bosque aleatorio completo.
+        """
+        # Import local
+        try:
+            from storage import ml_exporter
+        except ImportError:
+            try:
+                from core import ml_exporter
+            except ImportError:
+                return "// Error: No se pudo encontrar 'ml_exporter' para aplanar el árbol."
+        
+        if not self.trees:
+            return "// Error: El modelo no está entrenado (no hay árboles)."
+
+        # Helper para formatear arrays de C
+        def format_c_array(name, arr, dtype="int"):
+            if not arr:
+                return f"{dtype} {name}[1] = {{0}};"
+            values = ", ".join(map(str, arr))
+            return f"{dtype} {name}[{len(arr)}] = {{{values}}};"
+
+        code = [
+            "// EduBot ML: Random Forest Classifier (Iterative C Export)",
+            f"// {self.n_trees} árboles, exportación segura con uso de pila constante (O(1))",
+            ""
+        ]
+
+        # 1. Generar los datos y funciones para CADA árbol
+        tree_fn_names = []
+        for i, tree in enumerate(self.trees):
+            if tree.root is None:
+                code.append(f"// Árbol {i} no está entrenado, se omite.")
+                continue
+            
+            try:
+                flat_tree = ml_exporter._flatten_tree_to_arrays(tree.root)
+            except Exception as e:
+                code.append(f"// Error aplanando árbol {i}: {e}")
+                continue
+
+            tree_name = f"tree{i}"
+            tree_fn_name = f"predict_{tree_name}"
+            tree_fn_names.append(tree_fn_name)
+
+            code.append(f"// --- Datos del Árbol {i} ---")
+            code.append(format_c_array(f"{tree_name}_feature_index", flat_tree['feature_index'], "int"))
+            code.append(format_c_array(f"{tree_name}_threshold", flat_tree['threshold'], "float"))
+            code.append(format_c_array(f"{tree_name}_left_child", flat_tree['left_child'], "int"))
+            code.append(format_c_array(f"{tree_name}_right_child", flat_tree['right_child'], "int"))
+            code.append(format_c_array(f"{tree_name}_value", flat_tree['value'], "int"))
+            code.append("")
+
+            func = [
+                f"int {tree_fn_name}(float row[]) {{",
+                "  int node_index = 0;",
+                f"  while ({tree_name}_feature_index[node_index] != -1) {{",
+                f"    if (row[{tree_name}_feature_index[node_index]] <= {tree_name}_threshold[node_index]) {{",
+                f"      node_index = {tree_name}_left_child[node_index];",
+                "    } else {",
+                f"      node_index = {tree_name}_right_child[node_index];",
+                "    }",
+                "  }",
+                f"  return {tree_name}_value[node_index];",
+                "}",
+                ""
+            ]
+            code.extend(func)
+
+        # 2. Generar la función de Voto Mayoritario
+        # (Implementación simple O(N^2), segura para N pequeño como n_trees)
+        vote_helper = [
+            "// Función auxiliar de voto mayoritario",
+            f"int majority_vote(int votes[], int num_votes) {{",
+            "  if (num_votes == 0) return 0;",
+            "  int max_count = 0;",
+            "  int max_vote = votes[0];",
+            "  for (int i = 0; i < num_votes; i++) {",
+            "    int current_count = 0;",
+            "    for (int j = 0; j < num_votes; j++) {",
+            "      if (votes[j] == votes[i]) {",
+            "        current_count++;",
+            "      }",
+            "    }",
+            "    if (current_count > max_count) {",
+            "      max_count = current_count;",
+            "      max_vote = votes[i];",
+            "    }",
+            "  }",
+            "  return max_vote;",
+            "}",
+            ""
+        ]
+        code.extend(vote_helper)
+
+        # 3. Generar la función principal
+        main_func = [
+            f"int {fn_name}(float row[]) {{",
+            f"  int votes[{len(tree_fn_names)}];",
+        ]
+        # Recoger votos
+        for i, fn in enumerate(tree_fn_names):
+            main_func.append(f"  votes[{i}] = {fn}(row);")
+        
+        main_func.extend([
+            f"  return majority_vote(votes, {len(tree_fn_names)});",
+            "}"
+        ])
+        code.extend(main_func)
+        return "\n".join(code)
+
+
 class RandomForestRegressor(RandomForestClassifier):
     def fit(self, dataset: List[List[Any]]):
         self.trees = []
@@ -483,6 +697,95 @@ class RandomForestRegressor(RandomForestClassifier):
             avg = sum(float(p) for p in row_preds) / len(row_preds)
             preds.append(avg)
         return preds
+
+    # <--- Nuevo: Implementación de `to_arduino_code` para RandomForestRegressor
+    def to_arduino_code(self, fn_name: str = "predict_row") -> str:
+        """
+        Genera código C iterativo (seguro para stack) para el bosque aleatorio completo.
+        """
+        # Import local
+        try:
+            from storage import ml_exporter
+        except ImportError:
+            try:
+                from core import ml_exporter
+            except ImportError:
+                return "// Error: No se pudo encontrar 'ml_exporter' para aplanar el árbol."
+        
+        if not self.trees:
+            return "// Error: El modelo no está entrenado (no hay árboles)."
+
+        # Helper para formatear arrays de C
+        def format_c_array(name, arr, dtype="int"):
+            if not arr:
+                return f"{dtype} {name}[1] = {{0}};"
+            values = ", ".join(map(str, arr))
+            return f"{dtype} {name}[{len(arr)}] = {{{values}}};"
+
+        code = [
+            "// EduBot ML: Random Forest Regressor (Iterative C Export)",
+            f"// {self.n_trees} árboles, exportación segura con uso de pila constante (O(1))",
+            ""
+        ]
+
+        # 1. Generar los datos y funciones para CADA árbol
+        tree_fn_names = []
+        for i, tree in enumerate(self.trees):
+            if tree.root is None:
+                code.append(f"// Árbol {i} no está entrenado, se omite.")
+                continue
+            
+            try:
+                flat_tree = ml_exporter._flatten_tree_to_arrays(tree.root)
+            except Exception as e:
+                code.append(f"// Error aplanando árbol {i}: {e}")
+                continue
+
+            tree_name = f"tree{i}"
+            tree_fn_name = f"predict_{tree_name}"
+            tree_fn_names.append(tree_fn_name)
+
+            code.append(f"// --- Datos del Árbol {i} ---")
+            code.append(format_c_array(f"{tree_name}_feature_index", flat_tree['feature_index'], "int"))
+            code.append(format_c_array(f"{tree_name}_threshold", flat_tree['threshold'], "float"))
+            code.append(format_c_array(f"{tree_name}_left_child", flat_tree['left_child'], "int"))
+            code.append(format_c_array(f"{tree_name}_right_child", flat_tree['right_child'], "int"))
+            code.append(format_c_array(f"{tree_name}_value", flat_tree['value'], "float")) # <-- float
+            code.append("")
+
+            func = [
+                f"float {tree_fn_name}(float row[]) {{", # <-- float
+                "  int node_index = 0;",
+                f"  while ({tree_name}_feature_index[node_index] != -1) {{",
+                f"    if (row[{tree_name}_feature_index[node_index]] <= {tree_name}_threshold[node_index]) {{",
+                f"      node_index = {tree_name}_left_child[node_index];",
+                "    } else {",
+                f"      node_index = {tree_name}_right_child[node_index];",
+                "    }",
+                "  }",
+                f"  return {tree_name}_value[node_index];",
+                "}",
+                ""
+            ]
+            code.extend(func)
+
+        # 2. Generar la función principal (Promedio)
+        main_func = [
+            f"float {fn_name}(float row[]) {{", # <-- float
+            f"  float predictions[{len(tree_fn_names)}];",
+            "  float sum = 0.0;",
+        ]
+        # Recoger predicciones
+        for i, fn in enumerate(tree_fn_names):
+            main_func.append(f"  predictions[{i}] = {fn}(row);")
+            main_func.append(f"  sum += predictions[{i}];")
+        
+        main_func.extend([
+            f"  return sum / {len(tree_fn_names)}.0;",
+            "}"
+        ])
+        code.extend(main_func)
+        return "\n".join(code)
 
 # ---------------------------
 # Mini Linear Model
@@ -538,7 +841,7 @@ class MiniLinearModel:
         for i in range(len(w)-1):
             code += f"  s += weights[{i}] * row[{i}];\n"
         if len(w) > 0:
-            code += f"  s += weights[{len(w)-1}];\n"
+            code += f"  s += weights[{len(w)-1}];\n" # Añadir bias
         code += "  return s;\n}\n"
         return code
 
@@ -597,6 +900,23 @@ class MiniSVM:
             s = sum(w * xv for w, xv in zip(self.weights[:-1], xi)) + self.weights[-1]
             out.append(1 if s >= 0 else -1)
         return out
+
+    # <--- Nuevo: Implementación de `to_arduino_code` para MiniSVM
+    def to_arduino_code(self, fn_name="predict_row"):
+        w = self.weights or []
+        code = f"// EduBot ML: MiniSVM (Linear) C Export\n"
+        code += f"float svm_weights[{len(w)}] = {{{', '.join(map(str, w))}}};\n"
+        code += f"int {fn_name}(float row[]) {{\n"
+        code += "  float s = 0.0;\n"
+        # Producto punto
+        for i in range(len(w)-1):
+            code += f"  s += svm_weights[{i}] * row[{i}];\n"
+        # Añadir bias
+        if len(w) > 0:
+            code += f"  s += svm_weights[{len(w)-1}];\n"
+        # Devolver 1 o -1
+        code += "  return (s >= 0.0) ? 1 : -1;\n}\n"
+        return code
 
 # ---------------------------
 # MiniNeuralNetwork (MLP) con backprop multisalida

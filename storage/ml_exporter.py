@@ -181,21 +181,25 @@ def export_model_snapshot(model_name: str, *,
 # ============================================================
 # FUNCIONES DE APLANADO DE ÁRBOLES DE DECISIÓN
 
-def _flatten_tree_to_arrays(root_node: Dict[str, Any]) -> Dict[str, List]:
+def _flatten_tree_to_arrays(root_node: Any) -> Dict[str, List]:
     """
     Convierte un árbol de decisión (dict anidado) en arrays paralelos
     compatibles con firmware C.
     
     Usa un recorrido DFS (Pre-order) para construir los arrays.
+    
+    CORREGIDO: Esta función ahora maneja correctamente la diferencia entre
+    nodos hoja (que son valores, ej: 0, 1, 3.14) y
+    nodos de división (que son dicts con 'index', 'value', 'left', 'right').
     """
     # Arrays paralelos que se llenarán
     feature_index = []
     threshold = []
     left_child = []
     right_child = []
-    value = []
+    value = [] # Almacenará el valor de la hoja (si es hoja) o 0.0 (si es división)
 
-    def _traverse(node: Dict[str, Any]) -> int:
+    def _traverse(node: Any) -> int:
         """
         Función interna recursiva.
         Añade el nodo actual a los arrays y devuelve su índice.
@@ -203,20 +207,21 @@ def _flatten_tree_to_arrays(root_node: Dict[str, Any]) -> Dict[str, List]:
         # Obtener el índice para este nodo
         current_index = len(feature_index)
 
-        # Caso Base: Es un nodo Hoja (solo tiene 'value')
-        if 'value' in node:
+        # CORRECCIÓN
+        # Caso Base: Es un nodo Hoja (NO es un dict)
+        if not isinstance(node, dict):
             feature_index.append(-1)          # Marcador C para hoja
             threshold.append(0.0)             # Valor dummy
             left_child.append(-1)             # Marcador C para hoja
             right_child.append(-1)            # Marcador C para hoja
-            value.append(node['value'])
+            value.append(node)                # <-- Almacena el valor real de la hoja (ej: 0, 1, 3.14)
             return current_index
 
         # Caso Recursivo: Es un nodo de División (Split)
         # 1. Reservar espacio para el nodo actual (pre-order)
-        feature_index.append(node['feature_index'])
-        threshold.append(node['threshold'])
-        value.append(0.0)                     # Valor dummy (solo las hojas tienen valor)
+        feature_index.append(node['index'])
+        threshold.append(node['value']) # <-- 'value' aquí es el umbral
+        value.append(0.0)               # Valor dummy (solo las hojas tienen valor)
         
         # Índices de hijos (se llenarán después de la recursión)
         left_child.append(-1)
@@ -265,7 +270,9 @@ def _unflatten_arrays_to_tree(tree_struct: Dict[str, List]) -> Dict[str, Any]:
         """
         # Caso Base: Es un nodo Hoja
         if feature_index[index] == -1:
-            return {'value': value[index]}
+            # CORRECCIÓN
+            # Devuelve el valor de la hoja directamente, no un dict
+            return value[index]
 
         # Caso Recursivo: Es un nodo de División
         # Construir recursivamente los hijos
@@ -274,8 +281,8 @@ def _unflatten_arrays_to_tree(tree_struct: Dict[str, List]) -> Dict[str, Any]:
 
         # Construir el nodo actual
         return {
-            'feature_index': feature_index[index],
-            'threshold': threshold[index],
+            'index': feature_index[index],
+            'value': threshold[index], # <-- 'value' es el umbral
             'left': left_node,
             'right': right_node
         }
