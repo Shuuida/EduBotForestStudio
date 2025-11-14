@@ -110,9 +110,20 @@ def test_listlike_conversion():
     y_true = FakeArray([1, 0, 1])
     y_pred = FakeArray([1, 1, 0])
 
-    acc = ml_manager.evaluate(y_true, y_pred, metrics=["accuracy"])
-    assert_not_nan(acc, "Accuracy (FakeArray)")
-    assert_range(acc, 0.0, 1.0, "Accuracy (FakeArray)")
+    # CORRECCIÓN: Utilizamos ml_manager.evaluate() en lugar de ml_manager.evaluate_ext()
+
+    # La función evaluate() devuelve un diccionario.
+    acc_result = ml_manager.evaluate(y_true, y_pred, metrics=["accuracy"])
+    
+    # Verificamos que sea un dict
+    assert_is_dict(acc_result, "Accuracy (FakeArray) Result")
+
+    # Extraemos el 'score' numérico
+    acc_score = acc_result['score']
+    
+    # Pasamos el 'score' numérico a las aserciones
+    assert_not_nan(acc_score, "Accuracy (FakeArray)")
+    assert_range(acc_score, 0.0, 1.0, "Accuracy (FakeArray)")
 
     print("✅ Conversión tolist genérica funcional.")
 

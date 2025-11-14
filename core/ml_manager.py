@@ -1030,6 +1030,9 @@ def evaluate(y_true=None, y_pred=None, output: Optional[str] = None, metrics: st
 
         return result
 
+        #else:
+            #return score
+
     except Exception as e:
         raise RuntimeError(f"Error evaluating results: {e}")
 
