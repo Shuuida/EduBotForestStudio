@@ -1,6 +1,6 @@
 """
 ==============================
-Gestor de exportación para pipelines ML en el ecosistema MiniML/EduBot.
+Gestor de exportación para pipelines ML en el ecosistema MiniML/Sklearn de EduBot.
 
 Provee herramientas para:
 - Exportar estructuras ML (clasificación/regresión) a JSON.
@@ -179,6 +179,111 @@ def export_model_snapshot(model_name: str, *,
     return filename
 
 # ============================================================
+# FUNCIONES DE APLANADO DE ÁRBOLES DE DECISIÓN
+
+def _flatten_tree_to_arrays(root_node: Dict[str, Any]) -> Dict[str, List]:
+    """
+    Convierte un árbol de decisión (dict anidado) en arrays paralelos
+    compatibles con firmware C.
+    
+    Usa un recorrido DFS (Pre-order) para construir los arrays.
+    """
+    # Arrays paralelos que se llenarán
+    feature_index = []
+    threshold = []
+    left_child = []
+    right_child = []
+    value = []
+
+    def _traverse(node: Dict[str, Any]) -> int:
+        """
+        Función interna recursiva.
+        Añade el nodo actual a los arrays y devuelve su índice.
+        """
+        # Obtener el índice para este nodo
+        current_index = len(feature_index)
+
+        # Caso Base: Es un nodo Hoja (solo tiene 'value')
+        if 'value' in node:
+            feature_index.append(-1)          # Marcador C para hoja
+            threshold.append(0.0)             # Valor dummy
+            left_child.append(-1)             # Marcador C para hoja
+            right_child.append(-1)            # Marcador C para hoja
+            value.append(node['value'])
+            return current_index
+
+        # Caso Recursivo: Es un nodo de División (Split)
+        # 1. Reservar espacio para el nodo actual (pre-order)
+        feature_index.append(node['feature_index'])
+        threshold.append(node['threshold'])
+        value.append(0.0)                     # Valor dummy (solo las hojas tienen valor)
+        
+        # Índices de hijos (se llenarán después de la recursión)
+        left_child.append(-1)
+        right_child.append(-1)
+
+        # 2. Recorrer hijos
+        left_idx = _traverse(node['left'])
+        right_idx = _traverse(node['right'])
+
+        # 3. Actualizar los punteros de índice de este nodo
+        left_child[current_index] = left_idx
+        right_child[current_index] = right_idx
+
+        return current_index
+
+    # Iniciar el aplanado desde el nodo raíz
+    _traverse(root_node)
+
+    return {
+        "feature_index": feature_index,
+        "threshold": threshold,
+        "left_child": left_child,
+        "right_child": right_child,
+        "value": value
+    }
+
+def _unflatten_arrays_to_tree(tree_struct: Dict[str, List]) -> Dict[str, Any]:
+    """
+    Reconstruye un árbol de decisión (dict anidado) a partir de los
+    arrays paralelos.
+    
+    Esta es la función inversa de _flatten_tree_to_arrays, necesaria
+    para la deserialización en Python.
+    """
+    # Extraer los arrays
+    feature_index = tree_struct['feature_index']
+    threshold = tree_struct['threshold']
+    left_child = tree_struct['left_child']
+    right_child = tree_struct['right_child']
+    value = tree_struct['value']
+
+    def _build_node(index: int) -> Dict[str, Any]:
+        """
+        Función interna recursiva.
+        Construye el nodo (y sus sub-árboles) para el índice dado.
+        """
+        # Caso Base: Es un nodo Hoja
+        if feature_index[index] == -1:
+            return {'value': value[index]}
+
+        # Caso Recursivo: Es un nodo de División
+        # Construir recursivamente los hijos
+        left_node = _build_node(left_child[index])
+        right_node = _build_node(right_child[index])
+
+        # Construir el nodo actual
+        return {
+            'feature_index': feature_index[index],
+            'threshold': threshold[index],
+            'left': left_node,
+            'right': right_node
+        }
+
+    # Iniciar la reconstrucción desde el nodo raíz (índice 0)
+    return _build_node(0)
+
+# ============================================================
 # SERIALIZACIÓN Y DESERIALIZACIÓN DE MODELOS (MiniML / sklearn)
 
 def serialize_model(model_obj, metadata=None):
@@ -202,10 +307,18 @@ def serialize_model(model_obj, metadata=None):
         # MiniML (DecisionTree / RandomForest personalizados)
         elif hasattr(model_obj, "root") or hasattr(model_obj, "trees"):
             data["framework"] = "MiniML"
-            if hasattr(model_obj, "root"):
-                data["root"] = model_obj.root
-            if hasattr(model_obj, "trees"):
-                data["trees"] = [getattr(t, "root", None) for t in model_obj.trees]
+            # CORRECCIÓN C-COMPATIBLE
+            if hasattr(model_obj, "trees"): # RandomForest
+                data["type"] = "RandomForest"
+                data["tree_structs"] = []
+                for t in model_obj.trees:
+                    root = getattr(t, "root", None)
+                    if root:
+                        data["tree_structs"].append(_flatten_tree_to_arrays(root))
+            elif hasattr(model_obj, "root"): # DecisionTree
+                data["type"] = "DecisionTree"
+                if model_obj.root:
+                    data["tree_struct"] = _flatten_tree_to_arrays(model_obj.root)
             data["repr"] = f"{type(model_obj).__name__} - MiniML structure"
             return data
 
@@ -286,19 +399,23 @@ def deserialize_model(data):
 
         # MiniML
         elif framework == "MiniML":
-            model_type = data.get("type", "").lower()
-            # ÁRBOLES 
-            if "trees" in data:
-                model = ml_runtime.RandomForestClassifier(n_trees=len(data["trees"]))
+            model_type = data.get("type", "").lower() 
+            # CORRECCIÓN C-COMPATIBLE
+            # RandomForest (usa la estructura aplanada 'tree_structs')
+            if "tree_structs" in data:
+                model = ml_runtime.RandomForestClassifier(n_trees=len(data["tree_structs"]))
                 model.trees = []
-                for root in data["trees"]:
+                for tree_struct in data["tree_structs"]:
                     t = ml_runtime.DecisionTreeClassifier()
-                    t.root = root
+                    t.root = _unflatten_arrays_to_tree(tree_struct) # Reconstruir
                     model.trees.append(t)
-            elif "root" in data:
+                return model # Asegúrate de retornar el modelo RF aquí
+            
+            # DecisionTree (usa la estructura aplanada 'tree_struct')
+            elif "tree_struct" in data:
                 model = ml_runtime.DecisionTreeClassifier()
-                model.root = data["root"]
-                return model
+                model.root = _unflatten_arrays_to_tree(data["tree_struct"]) # Reconstruir
+                return model # Asegúrate de retornar el modelo DT aquí
 
             # LinearRegression
             elif "linear" in model_type or "regression" in model_type:
@@ -349,13 +466,19 @@ def extract_model_structure(model_obj):
             struct = {
                 "framework": "MiniML",
                 "type": "RandomForest" if hasattr(model_obj, "trees") else "DecisionTree",
-                "trees": []
             }
+            # CORRECCIÓN
+            # Aplanar los árboles a arrays compatibles con C
             if hasattr(model_obj, "trees"):
+                struct["tree_structs"] = [] # Usar el mismo nombre que en serialize_model
                 for t in model_obj.trees:
-                    struct["trees"].append(getattr(t, "root", None))
-            else:
-                struct["root"] = getattr(model_obj, "root", None)
+                    root = getattr(t, "root", None)
+                    if root:
+                        struct["tree_structs"].append(_flatten_tree_to_arrays(root))
+            elif hasattr(model_obj, "root"):
+                root = getattr(model_obj, "root", None)
+                if root:
+                    struct["tree_struct"] = _flatten_tree_to_arrays(root) # Usar el mismo nombre
 
             if hasattr(model_obj, "metadata") and "saved_at" in model_obj.metadata:
                 struct["saved_at"] = model_obj.metadata["saved_at"]
