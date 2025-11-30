@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import List, Any, Optional, Tuple, Union, Dict
 import random
 import math
-from core.ml_compat import safe_compare_le, _flatten_tree_internal
+from core.ml_compat import safe_compare_le, _flatten_tree_to_arrays
 
 # ---------------------------
 # MiniMatrixOps (sin numpy)
@@ -392,7 +392,7 @@ class DecisionTreeClassifier:
             return "// Error: El modelo no está entrenado (root is None)."
         
         try:
-            flat_tree = _flatten_tree_internal(self.root)
+            flat_tree = _flatten_tree_to_arrays(self.root)
         except Exception as e:
             return f"// Error durante el aplanamiento del árbol: {e}"
 
@@ -467,7 +467,7 @@ class DecisionTreeRegressor(DecisionTreeClassifier):
             return "// Error: El modelo no está entrenado (root is None)."
         
         try:
-            flat_tree = _flatten_tree_internal(self.root)
+            flat_tree = _flatten_tree_to_arrays(self.root)
         except Exception as e:
             return f"// Error durante el aplanamiento del árbol: {e}"
 
@@ -575,7 +575,7 @@ class RandomForestClassifier:
                 continue
             
             try:
-                flat_tree = _flatten_tree_internal(tree.root)
+                flat_tree = _flatten_tree_to_arrays(tree.root)
             except Exception as e:
                 code.append(f"// Error aplanando árbol {i}: {e}")
                 continue
@@ -701,7 +701,7 @@ class RandomForestRegressor(RandomForestClassifier):
                 continue
             
             try:
-                flat_tree = _flatten_tree_internal(tree.root)
+                flat_tree = _flatten_tree_to_arrays(tree.root)
             except Exception as e:
                 code.append(f"// Error aplanando árbol {i}: {e}")
                 continue
