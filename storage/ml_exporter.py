@@ -11,6 +11,7 @@ Provee herramientas para:
 
 from typing import List, Dict, Any, Optional
 from core import ml_struct_rules
+from core.ml_compat import _flatten_tree_to_arrays, _unflatten_arrays_to_tree
 import json
 import time
 import os
@@ -177,118 +178,6 @@ def export_model_snapshot(model_name: str, *,
 
     _log(f"Snapshot de modelo '{model_name}' exportado a {filename}")
     return filename
-
-# ============================================================
-# FUNCIONES DE APLANADO DE ÁRBOLES DE DECISIÓN
-
-def _flatten_tree_to_arrays(root_node: Any) -> Dict[str, List]:
-    """
-    Convierte un árbol de decisión (dict anidado) en arrays paralelos
-    compatibles con firmware C.
-    
-    Usa un recorrido DFS (Pre-order) para construir los arrays.
-    
-    CORREGIDO: Esta función ahora maneja correctamente la diferencia entre
-    nodos hoja (que son valores, ej: 0, 1, 3.14) y
-    nodos de división (que son dicts con 'index', 'value', 'left', 'right').
-    """
-    # Arrays paralelos que se llenarán
-    feature_index = []
-    threshold = []
-    left_child = []
-    right_child = []
-    value = [] # Almacenará el valor de la hoja (si es hoja) o 0.0 (si es división)
-
-    def _traverse(node: Any) -> int:
-        """
-        Función interna recursiva.
-        Añade el nodo actual a los arrays y devuelve su índice.
-        """
-        # Obtener el índice para este nodo
-        current_index = len(feature_index)
-
-        # CORRECCIÓN
-        # Caso Base: Es un nodo Hoja (NO es un dict)
-        if not isinstance(node, dict):
-            feature_index.append(-1)          # Marcador C para hoja
-            threshold.append(0.0)             # Valor dummy
-            left_child.append(-1)             # Marcador C para hoja
-            right_child.append(-1)            # Marcador C para hoja
-            value.append(node)                # <-- Almacena el valor real de la hoja (ej: 0, 1, 3.14)
-            return current_index
-
-        # Caso Recursivo: Es un nodo de División (Split)
-        # 1. Reservar espacio para el nodo actual (pre-order)
-        feature_index.append(node['index'])
-        threshold.append(node['value']) # <-- 'value' aquí es el umbral
-        value.append(0.0)               # Valor dummy (solo las hojas tienen valor)
-        
-        # Índices de hijos (se llenarán después de la recursión)
-        left_child.append(-1)
-        right_child.append(-1)
-
-        # 2. Recorrer hijos
-        left_idx = _traverse(node['left'])
-        right_idx = _traverse(node['right'])
-
-        # 3. Actualizar los punteros de índice de este nodo
-        left_child[current_index] = left_idx
-        right_child[current_index] = right_idx
-
-        return current_index
-
-    # Iniciar el aplanado desde el nodo raíz
-    _traverse(root_node)
-
-    return {
-        "feature_index": feature_index,
-        "threshold": threshold,
-        "left_child": left_child,
-        "right_child": right_child,
-        "value": value
-    }
-
-def _unflatten_arrays_to_tree(tree_struct: Dict[str, List]) -> Dict[str, Any]:
-    """
-    Reconstruye un árbol de decisión (dict anidado) a partir de los
-    arrays paralelos.
-    
-    Esta es la función inversa de _flatten_tree_to_arrays, necesaria
-    para la deserialización en Python.
-    """
-    # Extraer los arrays
-    feature_index = tree_struct['feature_index']
-    threshold = tree_struct['threshold']
-    left_child = tree_struct['left_child']
-    right_child = tree_struct['right_child']
-    value = tree_struct['value']
-
-    def _build_node(index: int) -> Dict[str, Any]:
-        """
-        Función interna recursiva.
-        Construye el nodo (y sus sub-árboles) para el índice dado.
-        """
-        # Caso Base: Es un nodo Hoja
-        if feature_index[index] == -1:
-            # CORRECCIÓN
-            # Devuelve el valor de la hoja directamente, no un dict
-            return value[index]
-
-        # Caso Recursivo: Es un nodo de División
-        # Construir recursivamente los hijos
-        left_node = _build_node(left_child[index])
-        right_node = _build_node(right_child[index])
-
-        # Construir el nodo actual
-        return {
-            'index': feature_index[index],
-            'value': threshold[index], # <-- 'value' es el umbral
-            'left': left_node,
-            'right': right_node
-        }
-
-    # Iniciar la reconstrucción desde el nodo raíz (índice 0)
-    return _build_node(0)
 
 # ============================================================
 # SERIALIZACIÓN Y DESERIALIZACIÓN DE MODELOS (MiniML / sklearn)

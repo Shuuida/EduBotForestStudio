@@ -17,7 +17,8 @@ from __future__ import annotations
 from typing import List, Any, Optional, Tuple, Union, Dict
 import random
 import math
-from core.ml_compat import safe_compare_le
+from core.ml_compat import safe_compare_le, _flatten_tree_internal
+
 # ---------------------------
 # MiniMatrixOps (sin numpy)
 # ---------------------------
@@ -382,26 +383,16 @@ class DecisionTreeClassifier:
             preds.append(self._predict_row(self.root, row))
         return preds
 
-    # <--- Modificación: Función `to_arduino_code` corregido para evitar anidados de if/else que causen un desbordamiento de pila (Stack Overflow)
+    # Función `to_arduino_code` corregido para evitar anidados de if/else que causen un desbordamiento de pila (Stack Overflow)
     def to_arduino_code(self, fn_name: str = "predict_row") -> str:
         """
         Genera código C iterativo (seguro para stack) usando arrays aplanados.
         """
-        # Import local para evitar dependencia circular a nivel de módulo
-        try:
-            from storage import ml_exporter
-        except ImportError:
-            print("[WARN] No se pudo importar storage.ml_exporter. Usando shim de 'core' si existe.")
-            try:
-                from core import ml_exporter # Fallback si la estructura es diferente
-            except ImportError:
-                return "// Error: No se pudo encontrar 'ml_exporter' para aplanar el árbol."
-
         if self.root is None:
             return "// Error: El modelo no está entrenado (root is None)."
         
         try:
-            flat_tree = ml_exporter._flatten_tree_to_arrays(self.root)
+            flat_tree = _flatten_tree_internal(self.root)
         except Exception as e:
             return f"// Error durante el aplanamiento del árbol: {e}"
 
@@ -414,7 +405,7 @@ class DecisionTreeClassifier:
 
         # Generar arrays C
         code = [
-            "// EduBot ML: Decision Tree Classifier (Iterative C Export)",
+            "// MiniML: Decision Tree Classifier (Iterative C Export)",
             "// Exportación segura con uso de pila constante (O(1))",
             format_c_array("tree_feature_index", flat_tree['feature_index'], "int"),
             format_c_array("tree_threshold", flat_tree['threshold'], "float"),
@@ -467,25 +458,16 @@ class DecisionTreeRegressor(DecisionTreeClassifier):
             preds.append(float(p))
         return preds
 
-    # <--- Nuevo: Override de `to_arduino_code` para Regresor
+    # Override de `to_arduino_code` para Regresor
     def to_arduino_code(self, fn_name: str = "predict_row") -> str:
         """
         Genera código C iterativo (seguro para stack) para regresión (devuelve float).
         """
-        # Import local
-        try:
-            from storage import ml_exporter
-        except ImportError:
-            try:
-                from core import ml_exporter
-            except ImportError:
-                return "// Error: No se pudo encontrar 'ml_exporter' para aplanar el árbol."
-
         if self.root is None:
             return "// Error: El modelo no está entrenado (root is None)."
         
         try:
-            flat_tree = ml_exporter._flatten_tree_to_arrays(self.root)
+            flat_tree = _flatten_tree_internal(self.root)
         except Exception as e:
             return f"// Error durante el aplanamiento del árbol: {e}"
 
@@ -498,7 +480,7 @@ class DecisionTreeRegressor(DecisionTreeClassifier):
 
         # Generar arrays C
         code = [
-            "// EduBot ML: Decision Tree Regressor (Iterative C Export)",
+            "// MiniML: Decision Tree Regressor (Iterative C Export)",
             "// Exportación segura con uso de pila constante (O(1))",
             format_c_array("tree_feature_index", flat_tree['feature_index'], "int"),
             format_c_array("tree_threshold", flat_tree['threshold'], "float"),
@@ -564,20 +546,11 @@ class RandomForestClassifier:
             votes.append(max(agg.items(), key=lambda x: x[1])[0])
         return votes
 
-    # <--- Nuevo: Implementación de `to_arduino_code` para RandomForestClassifier
+    # Implementación de `to_arduino_code` para RandomForestClassifier
     def to_arduino_code(self, fn_name: str = "predict_row") -> str:
         """
         Genera código C iterativo (seguro para stack) para el bosque aleatorio completo.
         """
-        # Import local
-        try:
-            from storage import ml_exporter
-        except ImportError:
-            try:
-                from core import ml_exporter
-            except ImportError:
-                return "// Error: No se pudo encontrar 'ml_exporter' para aplanar el árbol."
-        
         if not self.trees:
             return "// Error: El modelo no está entrenado (no hay árboles)."
 
@@ -589,7 +562,7 @@ class RandomForestClassifier:
             return f"{dtype} {name}[{len(arr)}] = {{{values}}};"
 
         code = [
-            "// EduBot ML: Random Forest Classifier (Iterative C Export)",
+            "// MiniML: Random Forest Classifier (Iterative C Export)",
             f"// {self.n_trees} árboles, exportación segura con uso de pila constante (O(1))",
             ""
         ]
@@ -602,7 +575,7 @@ class RandomForestClassifier:
                 continue
             
             try:
-                flat_tree = ml_exporter._flatten_tree_to_arrays(tree.root)
+                flat_tree = _flatten_tree_internal(tree.root)
             except Exception as e:
                 code.append(f"// Error aplanando árbol {i}: {e}")
                 continue
@@ -698,20 +671,12 @@ class RandomForestRegressor(RandomForestClassifier):
             preds.append(avg)
         return preds
 
-    # <--- Nuevo: Implementación de `to_arduino_code` para RandomForestRegressor
+    # Implementación de `to_arduino_code` para RandomForestRegressor
     def to_arduino_code(self, fn_name: str = "predict_row") -> str:
         """
         Genera código C iterativo (seguro para stack) para el bosque aleatorio completo.
         """
         # Import local
-        try:
-            from storage import ml_exporter
-        except ImportError:
-            try:
-                from core import ml_exporter
-            except ImportError:
-                return "// Error: No se pudo encontrar 'ml_exporter' para aplanar el árbol."
-        
         if not self.trees:
             return "// Error: El modelo no está entrenado (no hay árboles)."
 
@@ -723,7 +688,7 @@ class RandomForestRegressor(RandomForestClassifier):
             return f"{dtype} {name}[{len(arr)}] = {{{values}}};"
 
         code = [
-            "// EduBot ML: Random Forest Regressor (Iterative C Export)",
+            "// MiniML: Random Forest Regressor (Iterative C Export)",
             f"// {self.n_trees} árboles, exportación segura con uso de pila constante (O(1))",
             ""
         ]
@@ -736,7 +701,7 @@ class RandomForestRegressor(RandomForestClassifier):
                 continue
             
             try:
-                flat_tree = ml_exporter._flatten_tree_to_arrays(tree.root)
+                flat_tree = _flatten_tree_internal(tree.root)
             except Exception as e:
                 code.append(f"// Error aplanando árbol {i}: {e}")
                 continue
@@ -901,7 +866,7 @@ class MiniSVM:
             out.append(1 if s >= 0 else -1)
         return out
 
-    # <--- Nuevo: Implementación de `to_arduino_code` para MiniSVM
+    # Implementación de `to_arduino_code` para MiniSVM
     def to_arduino_code(self, fn_name="predict_row"):
         w = self.weights or []
         code = f"// EduBot ML: MiniSVM (Linear) C Export\n"
