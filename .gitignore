@@ -26,3 +26,4 @@ ml_debug_log.txt
 firmware_export.json
 .vscode/
 .idx/
+test_outputs/

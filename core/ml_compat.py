@@ -156,6 +156,70 @@ def safe_metric_compare(metric, best_score):
     # Si no se pueden convertir, no se puede mejorar el score
     return False
 
+
+# ---------------------------------------------------
+#  VALIDACIÓN Y LIMPIEZA DE DATOS
+
+def check_dims(X: List[List[Any]], expected_cols: int, context: str = ""):
+    """
+    Valida estrictamente que X tenga el número esperado de columnas.
+    """
+    if not X:
+        raise ValueError(f"{context}: El dataset de entrada está vacío.")
+    
+    # Verificar primera fila
+    if len(X[0]) != expected_cols:
+        raise ValueError(f"{context}: Dimensión incorrecta. Esperado {expected_cols} columnas, recibido {len(X[0])}.")
+
+def impute_missing_values(dataset: List[List[Any]], strategy: str = 'mean') -> List[List[Any]]:
+    """
+    Imputa valores faltantes (None, NaN, strings vacíos) en un dataset numérico.
+    
+    Args:
+        dataset: Lista de listas.
+        strategy: 'mean' (media) o 'mode' (moda).
+        
+    Returns:
+        Dataset limpio (copia nueva).
+    """
+    if not dataset:
+        return []
+
+    n_cols = len(dataset[0])
+    n_rows = len(dataset)
+    clean_data = [row[:] for row in dataset] # Copia profunda básica
+    
+    # Calcular estadísticas por columna
+    replacements = []
+    for c in range(n_cols):
+        valid_values = []
+        for r in range(n_rows):
+            val = resolve_numeric(dataset[r][c])
+            if val is not None:
+                valid_values.append(val)
+        
+        if not valid_values:
+            replacements.append(0.0) # Fallback si toda la columna es NaN
+            continue
+
+        if strategy == 'mean':
+            replacements.append(sum(valid_values) / len(valid_values))
+        elif strategy == 'mode':
+            counts = {}
+            for v in valid_values:
+                counts[v] = counts.get(v, 0) + 1
+            replacements.append(max(counts, key=counts.get))
+        else:
+            replacements.append(0.0)
+
+    # Aplicar reemplazos
+    for r in range(n_rows):
+        for c in range(n_cols):
+            if resolve_numeric(clean_data[r][c]) is None:
+                clean_data[r][c] = replacements[c]
+                
+    return clean_data
+
 # ---------------------------------------------------
 # FUNCIONES DE APLANADO DE ÁRBOLES DE DECISIÓN
 

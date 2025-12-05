@@ -15,7 +15,7 @@ from core.ml_compat import _flatten_tree_to_arrays, _unflatten_arrays_to_tree
 import json
 import time
 import os
-
+from core import ml_factory
 # Opcional: importar _MODEL_REGISTRY desde ml_manager o ml_runtime
 try:
     from core import ml_manager
@@ -27,7 +27,7 @@ except Exception:
 _EXPORT_LOG: List[str] = []
 
 
-# ============================
+# -------------------------
 # UTILIDADES INTERNAS
 
 def _log(msg: str):
@@ -41,7 +41,7 @@ def get_export_log(limit: int = 25) -> List[str]:
     return _EXPORT_LOG[-limit:]
 
 
-# ============================
+# -------------------------
 # EXPORTACIÓN DE PIPELINES
 
 def export_blocks_to_struct(blocks: List[Dict[str, Any]], *,
@@ -116,7 +116,7 @@ def export_struct_to_json_file(struct_data: Dict[str, Any], path: str, *,
     _log(f"Estructura ML exportada correctamente a {path}")
 
 
-# ============================
+# -------------------------
 # EXPORTACIÓN DE MODELOS
 
 def export_model_snapshot(model_name: str, *,
@@ -179,7 +179,7 @@ def export_model_snapshot(model_name: str, *,
     _log(f"Snapshot de modelo '{model_name}' exportado a {filename}")
     return filename
 
-# ============================================================
+# ---------------------------------------------------------
 # SERIALIZACIÓN Y DESERIALIZACIÓN DE MODELOS (MiniML / sklearn)
 
 def serialize_model(model_obj, metadata=None):
@@ -295,54 +295,55 @@ def deserialize_model(data):
 
         # MiniML
         elif framework == "MiniML":
-            model_type = data.get("type", "").lower() 
-            # CORRECCIÓN C-COMPATIBLE
-            # RandomForest (usa la estructura aplanada 'tree_structs')
-            if "tree_structs" in data:
-                model = ml_runtime.RandomForestClassifier(n_trees=len(data["tree_structs"]))
-                model.trees = []
-                for tree_struct in data["tree_structs"]:
-                    t = ml_runtime.DecisionTreeClassifier()
-                    t.root = _unflatten_arrays_to_tree(tree_struct) # Reconstruir
-                    model.trees.append(t)
-                return model # Asegúrate de retornar el modelo RF aquí
-            
-            # DecisionTree (usa la estructura aplanada 'tree_struct')
-            elif "tree_struct" in data:
-                model = ml_runtime.DecisionTreeClassifier()
-                model.root = _unflatten_arrays_to_tree(data["tree_struct"]) # Reconstruir
-                return model # Asegúrate de retornar el modelo DT aquí
+                model_type = data.get("type", "").lower()
+                
+                # Usar Factory para crear la instancia base
+                # Mapeamos tipos del JSON a tipos del Factory
+                factory_type = model_type
+                if "tree" in model_type: factory_type = "DecisionTree"
+                if "forest" in model_type: factory_type = "RandomForest"
+                
+                # Manejo especial para RandomForest que necesita n_trees en init
+                params = {}
+                if "tree_structs" in data:
+                    params['n_trees'] = len(data["tree_structs"])
+                    
+                try:
+                    model = ml_factory.create_model(model_type, params)
+                except ValueError:
+                    # Fallback manual si el factory falla o el tipo es muy custom
+                    pass
 
             # LinearRegression
-            elif "linear" in model_type or "regression" in model_type:
-                model = ml_runtime.MiniLinearModel()  # Corregido: era MiniLinearModel
-                model.coefficients = data.get("coefficients", [])
-                model.intercept = data.get("intercept", 0.0)
-                return model
+        elif "linear" in model_type or "regression" in model_type:
+            model = ml_runtime.MiniLinearModel() 
+            model.coefficients = data.get("coefficients", [])
+            model.intercept = data.get("intercept", 0.0)
+            return model
 
             # SVM
-            elif "svm" in model_type:
-                model = ml_runtime.MiniSVM()  # Corregido: era MiniSVM
-                model.support_vectors = data.get("support_vectors", [])
-                model.weights = data.get("weights", [])
-                model.bias = data.get("bias", 0.0)
-                return model
+        elif "svm" in model_type:
+            model = ml_runtime.MiniSVM()
+            model.support_vectors = data.get("support_vectors", [])
+            model.weights = data.get("weights", [])
+            model.bias = data.get("bias", 0.0)
+            return model
 
             # Neural Network
-            elif "neural" in model_type or "network" in model_type:
-                model = ml_runtime.MiniNeuralNetwork()  # Corregido: era MiniNeuralNetwork
-                model.weights = data.get("weights", [])
-                model.biases = data.get("biases", [])
-                model.activations = data.get("activations", [])
-                model.layers = data.get("layers", []) # <-- AÑADIDO
-                return model
+        elif "neural" in model_type or "network" in model_type:
+            model = ml_runtime.MiniNeuralNetwork() 
+            model.weights = data.get("weights", [])
+            model.biases = data.get("biases", [])
+            model.activations = data.get("activations", [])
+            model.layers = data.get("layers", [])
+            return model
 
         return {"framework": framework or "unknown", "repr": repr(data)}
 
     except Exception as e:
         raise RuntimeError(f"Error deserializando modelo: {e}")
 
-# ============================================================
+# ---------------------------------------------------------
 # EXTRACTOR DE ESTRUCTURAS DE MODELOS (para visualización y exportación)
 
 def extract_model_structure(model_obj):

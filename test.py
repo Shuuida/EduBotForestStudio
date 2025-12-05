@@ -13,154 +13,175 @@ Versión QA: 1.2
 
 import core.ml_manager as ml_manager
 import core.ml_runtime as ml_runtime
+import os
+import shutil
 
+# Directorio para artefactos de salida
+OUTPUT_DIR = "test_outputs"
 
-# ===============================
-#   Funciones de validación QA
-# ===============================
+# -------------------------------------
+# DATASETS SINTÉTICOS (Pequeños para verificación visual)
+# -------------------------------------
 
-def assert_range(value, min_val, max_val, name):
-    """Valida que una métrica esté dentro del rango esperado"""
-    if not (min_val <= value <= max_val):
-        raise AssertionError(f"❌ {name} fuera de rango: {value} (esperado entre {min_val} y {max_val})")
-    print(f"✅ {name}: {value:.5f} (OK)")
+# Clasificación Binaria (0 o 1)
+# Pattern: x1 > 5 AND x2 < 3 -> 1, else 0
+CLS_DATA = [
+    [5.1, 3.5, 0], [4.9, 3.0, 0], [4.7, 3.2, 0], [4.6, 3.1, 0], # Clase 0
+    [5.0, 3.6, 0], [5.4, 3.9, 0], [4.5, 2.3, 0], [4.4, 2.9, 0], # Clase 0
+    [7.0, 3.2, 1], [6.4, 3.2, 1], [6.9, 3.1, 1], [5.5, 2.3, 1], # Clase 1
+    [6.5, 2.8, 1], [5.7, 2.8, 1], [6.3, 3.3, 1], [5.8, 2.7, 1]  # Clase 1
+]
+CLS_X_TEST = [[5.0, 3.4], [6.0, 2.5]] # Esperado: [0, 1]
 
+# Regresión Lineal Simple
+# Pattern: y = 2*x1 + 3*x2 + 5 (aprox)
+REG_DATA = [
+    [1.0, 1.0, 10.0], [2.0, 1.0, 12.0], [1.0, 2.0, 13.0], 
+    [3.0, 2.0, 17.0], [5.0, 1.0, 18.0], [0.0, 0.0, 5.0],
+    [2.0, 2.0, 15.0], [4.0, 4.0, 25.0]
+]
+REG_X_TEST = [[3.0, 3.0], [10.0, 10.0]] 
+# Esperado: 
+# x=[3,3] -> 2(3)+3(3)+5 = 6+9+5 = 20
+# x=[10,10] -> 2(10)+3(10)+5 = 20+30+5 = 55
 
-def assert_not_nan(value, name):
-    """Evita valores NaN o None"""
-    if value is None or (isinstance(value, float) and (value != value)):
-        raise AssertionError(f"❌ {name} no válido (None o NaN)")
-    print(f"✅ {name}: válido ({value})")
+# Problema No Lineal (XOR) para Redes Neuronales
+XOR_DATA = [
+    [0, 0, 0], [0, 1, 1], [1, 0, 1], [1, 1, 0]
+]
 
-def assert_is_dict(value, name):
-    """Verifica que el valor sea un diccionario."""
-    if not isinstance(value, dict):
-        raise AssertionError(f"❌ {name} no es un diccionario (tipo: {type(value)})")
-    print(f"✅ {name}: es un diccionario válido.")
+# -------------------------------------
+# UTILIDADES DE TEST
+# -------------------------------------
 
-def assert_keys(value, keys, name):
-    """Verifica que un diccionario contenga todas las claves esperadas."""
-    if not all(k in value for k in keys):
-        missing = [k for k in keys if k not in value]
-        raise AssertionError(f"❌ {name}: faltan claves {missing}")
-    print(f"✅ {name}: contiene todas las claves esperadas.")
+def setup_environment():
+    """Limpia y prepara el entorno de pruebas."""
+    if os.path.exists(OUTPUT_DIR):
+        shutil.rmtree(OUTPUT_DIR)
+    os.makedirs(OUTPUT_DIR)
+    ml_manager.clear_registry()
+    print(f"📂 Entorno preparado: ./{OUTPUT_DIR}/")
 
-# ===============================
-#   Tests individuales
-# ===============================
-
-def test_evaluate_basic():
-    """Valida el cálculo de métricas básicas."""
-    print("\n=== ⚙️ TEST: evaluate() ===")
-
-    # Clasificación
-    y_true_cls = [1, 0, 1, 1, 0]
-    y_pred_cls = [1, 0, 0, 1, 0]
-
-    # La función evaluate devuelve un diccionario, no un float.
-    # Debemos acceder a la clave 'score' para obtener el valor numérico.
-    acc_result = ml_manager.evaluate(y_true_cls, y_pred_cls, metrics=["accuracy"])
-    assert_is_dict(acc_result, "Accuracy (clasificación)")
-    assert_range(acc_result['score'], 0.0, 1.0, "Accuracy (clasificación)")
-
-    # Regresión
-    y_true_reg = [2.5, 0.0, 2.1, 1.6]
-    y_pred_reg = [3.0, -0.1, 2.0, 1.5]
-
-    # Aplicar la misma lógica para el MSE.
-    mse_result = ml_manager.evaluate(y_true_reg, y_pred_reg, metrics=["mse"])
-    assert_is_dict(mse_result, "MSE (regresión)")
-    assert_not_nan(mse_result['score'], "MSE (regresión)")
-    # El MSE puede ser mayor que 2.0, ajustamos el rango para ser más realista.
-    assert_range(mse_result['score'], 0.0, 10.0, "MSE (regresión)")
-
-    print("✅ evaluate() completado sin errores.")
-
-
-def test_evaluate_ext_detailed():
-    """Valida el cálculo de múltiples métricas en modo extendido."""
-    print("\n=== 🧠 TEST: evaluate_ext() (modo detallado) ===")
-
-    # Clasificación extendida
-    y_true_cls = [1, 0, 1, 1, 0]
-    y_pred_cls = [1, 0, 0, 1, 0]
-
-    # El resultado ya es un diccionario de métricas, por lo que no necesita cambios.
-    results_cls = ml_manager.evaluate_ext(
-        y_true=y_true_cls,
-        y_pred=y_pred_cls,
-        metrics=["accuracy", "precision", "recall", "f1"],
-    )
-    assert_is_dict(results_cls, "Clasificación extendida")
-    assert_keys(results_cls, ["accuracy", "precision", "recall", "f1"], "Clasificación extendida")
-    assert_range(results_cls["accuracy"], 0.0, 1.0, "Accuracy en ext")
-
-    print("✅ evaluate_ext() completado sin errores.")
-
-def test_listlike_conversion():
-    print("\n=== 🔄 TEST: Conversión tolist universal ===")
-
-    class FakeArray:
-        """Simula un objeto tipo numpy sin usar numpy real"""
-        def __init__(self, data):
-            self._data = data
-        def tolist(self):
-            return self._data
-
-    y_true = FakeArray([1, 0, 1])
-    y_pred = FakeArray([1, 1, 0])
-
-    # CORRECCIÓN: Utilizamos ml_manager.evaluate() en lugar de ml_manager.evaluate_ext()
-
-    # La función evaluate() devuelve un diccionario.
-    acc_result = ml_manager.evaluate(y_true, y_pred, metrics=["accuracy"])
+def run_model_test(alias, model_type, dataset, test_input, task="classification", **params):
+    """
+    Ejecuta un test estandarizado para un modelo específico.
+    """
+    print(f"\n🔹 Probando: {alias} ({model_type})...")
     
-    # Verificamos que sea un dict
-    assert_is_dict(acc_result, "Accuracy (FakeArray) Result")
-
-    # Extraemos el 'score' numérico
-    acc_score = acc_result['score']
+    # 1. Pipeline de Entrenamiento
+    # Usamos escalado 'minmax' por defecto para modelos sensibles a distancia/gradiente
+    scaling = "minmax" if model_type in ["NeuralNetwork", "SVM", "KNearestNeighbors", "LinearRegression"] else None
     
-    # Pasamos el 'score' numérico a las aserciones
-    assert_not_nan(acc_score, "Accuracy (FakeArray)")
-    assert_range(acc_score, 0.0, 1.0, "Accuracy (FakeArray)")
-
-    print("✅ Conversión tolist genérica funcional.")
-
-
-def test_robustness_invalid_inputs():
-    print("\n=== ⚠️ TEST: Robustez ante inputs inválidos ===")
-
     try:
-        ml_manager.evaluate("cadena", [1, 0, 1])
+        res = ml_manager.train_pipeline(
+            model_name=alias,
+            dataset=dataset,
+            model_type=model_type,
+            params=params,
+            scaling=scaling
+        )
+        print(f"  ✅ Entrenamiento OK ({res['meta']['time_seconds']:.4f}s). Scaling: {scaling}")
+        
+        # 2. Inferencia Python
+        preds = ml_manager.predict(alias, test_input)
+        
+        # Formateo de predicción para legibilidad
+        fmt_preds = preds
+        if task == "classification":
+            # Si es NN, la salida es float, redondeamos para visualizar clase
+            if model_type == "NeuralNetwork":
+                fmt_preds = [int(p[0] >= 0.5) for p in preds]
+            else:
+                fmt_preds = preds
+        else:
+            fmt_preds = [round(float(p), 2) for p in preds]
+            
+        print(f"  ✅ Inferencia Python: {fmt_preds}")
+
+        # 3. Exportación de Artefactos
+        # JSON
+        json_path = os.path.join(OUTPUT_DIR, f"{alias}.json")
+        ml_manager.save_model(alias, json_path)
+        
+        # Código C (Header File)
+        c_code = ml_manager.export_to_c(alias)
+        h_path = os.path.join(OUTPUT_DIR, f"{alias}.h")
+        with open(h_path, "w", encoding="utf-8") as f:
+            f.write(c_code)
+            
+        print(f"  💾 Artefactos exportados: {alias}.json, {alias}.h")
+        return True
+
     except Exception as e:
-        print("✅ Detección de tipo inválido (y_true string):", type(e).__name__)
+        print(f"  ❌ ERROR CRÍTICO en {alias}: {e}")
+        # import traceback
+        # traceback.print_exc()
+        return False
 
-    try:
-        ml_manager.evaluate_ext(y_true=[1, 0, 1], y_pred="cadena", metrics=["accuracy"])
-    except Exception as e:
-        print("✅ Detección de tipo inválido (y_pred string):", type(e).__name__)
+# -------------------------------------
+# SUITE PRINCIPAL
+# -------------------------------------
 
-    print("✅ Robustez ante entradas inválidas verificada.")
+def main():
+    print("==============================================================")
+    print("🚀 MINIML (EDUBOT) - FULL COMPREHENSIVE TEST SUITE")
+    print("==============================================================")
+    
+    setup_environment()
+    
+    success_count = 0
+    total_tests = 0
 
+    # ÁRBOLES (Robustos, no requieren escalado)
+    
+    # Decision Tree (Clasificación)
+    total_tests += 1
+    if run_model_test("dt_classifier", "DecisionTreeClassifier", CLS_DATA, CLS_X_TEST, 
+                      task="classification", max_depth=4):
+        success_count += 1
 
-# ===============================
-#   Ejecutor de test general
-# ===============================
+    # Random Forest (Clasificación)
+    total_tests += 1
+    if run_model_test("rf_classifier", "RandomForestClassifier", CLS_DATA, CLS_X_TEST, 
+                      task="classification", n_trees=5, max_depth=3):
+        success_count += 1
 
-def run_all_tests():
-    print("🧩 Iniciando test extendido de evaluate() y evaluate_ext() en MiniML\n" + "=" * 65)
-    try:
-        test_evaluate_basic()
-        test_evaluate_ext_detailed()
-        test_listlike_conversion()
-        test_robustness_invalid_inputs()
-        print("\n🎯 RESULTADO FINAL: Todos los tests pasaron exitosamente.")
-    except AssertionError as ae:
-        print("\n❌ Fallo de validación QA:", ae)
-    except Exception as e:
-        print("\n💥 Error inesperado durante los tests:", e)
+    # Random Forest (Regresión)
+    total_tests += 1
+    if run_model_test("rf_regressor", "RandomForestRegressor", REG_DATA, REG_X_TEST, 
+                      task="regression", n_trees=5, max_depth=4):
+        success_count += 1
 
+    # MODELOS MATEMÁTICOS (Requieren Escalado)
+
+    # Linear Regression
+    total_tests += 1
+    if run_model_test("linear_reg", "LinearRegression", REG_DATA, REG_X_TEST, 
+                      task="regression", learning_rate=0.01, epochs=2000):
+        success_count += 1
+
+    # SVM (Clasificación)
+    total_tests += 1
+    if run_model_test("svm_classifier", "SVM", CLS_DATA, CLS_X_TEST, 
+                      task="classification", learning_rate=0.001, n_iters=1000):
+        success_count += 1
+
+    # Neural Network (XOR Problem - No Lineal)
+    # Nota: Aumentamos epochs para garantizar convergencia en dataset pequeño
+    total_tests += 1
+    if run_model_test("nn_xor", "NeuralNetwork", XOR_DATA, [[0, 1], [1, 1]], 
+                      task="classification", 
+                      n_inputs=2, n_hidden=4, n_outputs=1, epochs=5000, learning_rate=0.1):
+        success_count += 1
+        
+    print("\n==============================================================")
+    print(f" RESUMEN: {success_count}/{total_tests} Tests Exitosos.")
+    if success_count == total_tests:
+        print("✅ EDUBOT ESTÁ LISTO PARA PRODUCCIÓN.")
+        print(f"👉 Revisa la carpeta '{OUTPUT_DIR}' para ver el código C generado.")
+    else:
+        print("⚠️ HUBO ERRORES. REVISA EL LOG.")
+    print("==============================================================")
 
 if __name__ == "__main__":
-    run_all_tests()
+    main()

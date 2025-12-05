@@ -9,7 +9,7 @@ CORRECCIONES APLICADAS:
 2. Agregada variable epsilon en el scope correcto para evitar NameError
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import importlib
 import time
 import json
@@ -17,7 +17,8 @@ import os
 
 # Preferir el tiempo de ejecución interno
 from core import ml_runtime
-from core.ml_compat import normalize_tree
+from core import ml_factory
+from core.ml_compat import impute_missing_values
 
 # Intenta importar sklearn y joblib opcionalmente.
 _sklearn = None
@@ -70,359 +71,190 @@ def _is_regression_dataset(dataset):
     except Exception:
         return False
 
-# -------------------------
-# Train wrappers
+# ------------------------------------
+# Pipeline de entrenamiento unificado
 
-def train_random_forest(name: Optional[str] = None, dataset: Optional[List[List[Any]]] = None, *,
-                        model_name: Optional[str] = None,
-                        n_trees: int = 5, max_depth: int = 10,
-                        min_size: int = 1, sample_size: float = 1.0,
-                        n_features: Optional[int] = None, seed: Optional[int] = None
-                        ) -> Dict[str, Any]:
-    """
-    Entrena un modelo RandomForest (clasificador o regresor) según los datos.
-
-    Args:
-        name (str, optional): Nombre para registrar el modelo. Defaults to None.
-        dataset (List[List[Any]], optional): Datos de entrenamiento. Defaults to None.
-        model_name (str, optional): Alias para `name`. Defaults to None.
-        n_trees (int, optional): Número de árboles en el bosque. Defaults to 5.
-        max_depth (int, optional): Profundidad máxima de cada árbol. Defaults to 10.
-        min_size (int, optional): Tamaño mínimo de un nodo para dividir. Defaults to 1.
-        sample_size (float, optional): Tamaño de la muestra para cada árbol (fracción de datos). Defaults to 1.0.
-        n_features (Optional[int], optional): Número de características a considerar en cada división. Defaults to None (usa todas).
-        seed (Optional[int], optional): Semilla para la generación de números aleatorios. Defaults to None.
-
-    Returns:
-        Dict[str, Any]: Un diccionario con metadatos del entrenamiento y el modelo entrenado.
-
-    Raises:
-        ValueError: Si `name` o `dataset` son None.
-        RuntimeError: Si ocurre un error durante el entrenamiento del modelo.
-    """
+def train_pipeline(model_name: str, dataset: List[List[Any]], model_type: str, 
+                   params: Optional[Dict[str, Any]] = None, scaling: str = None) -> Dict[str, Any]:
     
-    name = model_name or name
-    if name is None:
-        raise ValueError("Debe especificarse un nombre de modelo (name o model_name).")
+    if not dataset:
+        raise ValueError("El dataset de entrada está vacío.")
 
-    if dataset is None:
-        raise ValueError("El dataset no puede ser None.")
-
-    start = time.time()
-    mode = available_mode()
-    is_regression = _is_regression_dataset(dataset)
-    meta = {'mode': mode, 'type': 'regression' if is_regression else 'classification'}
-
-    X = [row[:-1] for row in dataset]
-    y = [row[-1] for row in dataset]
-
-    if mode == "sklearn":
-        try:
-            if is_regression:
-                SKForest = _sklearn.RandomForestRegressor
-            else:
-                SKForest = _sklearn.RandomForestClassifier
-
-            model = SKForest(
-                n_estimators=n_trees,
-                max_depth=max_depth,
-                random_state=seed,
-                n_jobs=-1  # Usa todos los núcleos disponibles
-            )
-            model.fit(X, y)
-            _MODEL_REGISTRY[name] = {'mode': 'sklearn', 'model': model, 'type': meta['type']}
-        except Exception as e:
-            raise RuntimeError(f"Error entrenando RandomForest sklearn: {e}")
-    else:
-        try:
-            rf = ml_runtime.RandomForestClassifier(
-                n_trees=n_trees, max_depth=max_depth,
-                min_size=min_size, sample_size=sample_size,
-                n_features=n_features, seed=seed
-            )
-            rf.fit(dataset)
-            
-            # Validación de nodos de árbol (si el modelo tiene la estructura esperada)
-            if hasattr(rf, 'trees'):
-                for tree in rf.trees:
-                    validate_tree_node(getattr(tree, 'root', None))
-            elif hasattr(rf, 'root'):
-                validate_tree_node(rf.root)
-
-            _MODEL_REGISTRY[name] = {'mode': 'mini', 'model': rf, 'type': meta['type']}
-        except Exception as e:
-            raise RuntimeError(f"Error entrenando RandomForest interno: {e}")
-
-    meta['time_seconds'] = time.time() - start
-    model = _MODEL_REGISTRY[name]['model']
-    return {'meta': meta, 'model': model, 'model_name': name}
-
-
-# -------------------------
-# TRAIN LINEAR MODEL
-
-def train_linear_model(model_name: str, dataset: list, *, learning_rate=0.01, epochs=1000):
-    """
-    Entrena un modelo lineal (MiniML).
-
-    Args:
-        model_name (str): Nombre para registrar el modelo.
-        dataset (list): Datos de entrenamiento.
-        learning_rate (float, optional): Tasa de aprendizaje. Defaults to 0.01.
-        epochs (int, optional): Número de épocas de entrenamiento. Defaults to 1000.
-
-    Returns:
-        Dict[str, Any]: Metadatos del entrenamiento y el modelo.
-
-    Raises:
-        RuntimeError: Si ocurre un error durante el entrenamiento.
-    """
-    is_regression = _is_regression_dataset(dataset)
-
-    try:
-        # Actualmente solo soporta MiniML para modelos lineales
-        model = ml_runtime.MiniLinearModel(learning_rate=learning_rate, epochs=epochs)
-        model.fit(dataset)
-        _MODEL_REGISTRY[model_name] = {
-            "mode": "mini",
-            "model": model,
-            "type": "linear_regression" if is_regression else "linear_classification"
-        }
-        meta = {"mode": "mini", "framework": "MiniML", "type": "linear"}
-        model = _MODEL_REGISTRY[model_name]['model']
-        return {'meta': meta, 'model': model, 'model_name': model_name}
-    except Exception as e:
-        raise RuntimeError(f"Error entrenando modelo lineal MiniML: {e}")
-
-#-------------------------
-# TRAIN SVM
-
-def train_svm(model_name: str, dataset: list, *, learning_rate=0.001, lambda_param=0.01, epochs=1000):
-    """
-    Entrena un clasificador SVM simple usando MiniML.
-
-    Args:
-        model_name (str): Nombre para registrar el modelo.
-        dataset (list): Datos de entrenamiento.
-        learning_rate (float, optional): Tasa de aprendizaje. Defaults to 0.001.
-        lambda_param (float, optional): Parámetro de regularización lambda. Defaults to 0.01.
-        epochs (int, optional): Número de épocas de entrenamiento. Defaults to 1000.
-
-    Returns:
-        Dict[str, Any]: Metadatos del entrenamiento y el modelo.
-
-    Raises:
-        RuntimeError: Si ocurre un error durante el entrenamiento.
-    """
-    try:
-        model = ml_runtime.MiniSVM(learning_rate=learning_rate, lambda_param=lambda_param, epochs=epochs)
-        model.fit(dataset)
-        _MODEL_REGISTRY[model_name] = {'mode': 'mini', 'model': model, 'type': 'svm'}
-        meta = {'mode': 'mini', 'type': 'svm', 'framework': 'MiniML'}
-        model = _MODEL_REGISTRY[model_name]['model']
-        return {'meta': meta, 'model': model, 'model_name': model_name}
-    except Exception as e:
-        raise RuntimeError(f"Error entrenando SVM: {e}")
-
-# -------------------------
-# TRAIN NEURAL NETWORK
-
-def train_neural_network(model_name: str, dataset: list, *, hidden_size=4, epochs=1000, lr=0.01):
-    """
-    Entrena una pequeña red neuronal (MiniML).
-
-    Args:
-        model_name (str): Nombre para registrar el modelo.
-        dataset (list): Datos de entrenamiento.
-        hidden_size (int, optional): Tamaño de la capa oculta. Defaults to 4.
-        epochs (int, optional): Número de épocas de entrenamiento. Defaults to 1000.
-        lr (float, optional): Tasa de aprendizaje. Defaults to 0.01.
-
-    Returns:
-        Dict[str, Any]: Metadatos del entrenamiento y el modelo.
-
-    Raises:
-        RuntimeError: Si ocurre un error durante el entrenamiento.
-    """
+    print(f"--- Iniciando Pipeline para '{model_name}' ({model_type}) ---")
+    start_time = time.time()
     
-    input_size = len(dataset[0]) - 1
-    try:
-        model = ml_runtime.MiniNeuralNetwork(input_size=input_size, hidden_size=hidden_size, lr=lr, epochs=epochs)
-        model.fit(dataset)
-        _MODEL_REGISTRY[model_name] = {'mode': 'mini', 'model': model, 'type': 'neural_net'}
-        meta = {'mode': 'mini', 'type': 'neural_net', 'framework': 'MiniML'}
-        model = _MODEL_REGISTRY[model_name]['model']
-        return {'meta': meta, 'model': model, 'model_name': model_name}
-    except Exception as e:
-        raise RuntimeError(f"Error entrenando red neuronal: {e}")
+    # Imputación (Limpieza)
+    print(f" Ejecutando imputación de datos...")
+    clean_dataset = impute_missing_values(dataset, strategy='mean')
 
-# -------------------------
-def predict(name: Optional[str] = None, model: Optional[Any] = None, X: Optional[List[List[Any]]] = None) -> List[Any]:
-    """
-    Función genérica para realizar predicciones.
-
-    Puede ser llamada de varias maneras:
-      - `predict(name="nombre_modelo", X=datos)`
-      - `predict(model=objeto_modelo, X=datos)`
-      - `predict("nombre_modelo", datos)` (argumentos posicionales, menos recomendado)
-
-    Args:
-        name (Optional[str]): Nombre del modelo registrado a usar.
-        model (Optional[Any]): Objeto del modelo a usar (si no se usa `name`).
-        X (Optional[List[List[Any]]]): Datos de entrada para la predicción.
-
-    Returns:
-        List[Any]: Una lista de predicciones.
-
-    Raises:
-        KeyError: Si el `name` del modelo no se encuentra en el registro.
-        ValueError: Si no se proporcionan ni `name` ni `model`, o si `X` es None.
-        RuntimeError: Si el objeto del modelo no soporta el método `predict`.
-    """
-    # Normalizar argumentos posicionales si se pasó name como lista accidentalmente
-    if X is None and isinstance(model, list) and name is None:
-        # Posible llamada predict(name, X) donde name es una lista
-        # Esto es inusual y probablemente un error del usuario
-        pass
-
-    # Determinar modelo real a usar
-    model_obj = None
-    model_entry = None # Para obtener el modo del modelo
-
-    if model is not None:
-        # Si model es un string (nombre), buscar en registry
-        if isinstance(model, str):
-            if model not in _MODEL_REGISTRY:
-                raise KeyError(f"Model '{model}' not found")
-            model_entry = _MODEL_REGISTRY[model]
-            model_obj = model_entry['model']
-        else:
-            # Asumimos que es un objeto modelo ya instanciado (sklearn o mini)
-            model_obj = model
-            # Intentar inferir el modo si es posible (difícil sin info explícita)
-            # Si no, asumiremos que el usuario sabe lo que hace
-            if hasattr(model, 'trees') or hasattr(model, 'root'): # Heurística simple para MiniML
-                model_entry = {'mode': 'mini'}
-            else:
-                model_entry = {'mode': 'sklearn'} # Asunción
-    elif name is not None:
-        # name dado: buscar en el registro
-        if name not in _MODEL_REGISTRY:
-            raise KeyError(f"Model '{name}' not found")
-            model_entry = _MODEL_REGISTRY[name]
-            model_obj = model_entry['model']
-        else:
-            raise ValueError("predict requires either 'name' (registered model name) or 'model' (model object)")
-
-    if X is None:
-        raise ValueError("predict requires 'X' input (list of samples)")
-
-    # Validación de estructura del árbol para modelos MiniML antes de predecir
-    if model_entry and model_entry.get('mode') == 'mini':
-        if hasattr(model_obj, 'trees'):
-            for tree in model_obj.trees:
-                validate_tree_node(getattr(tree, 'root', None))
-        elif hasattr(model_obj, 'root'):
-            validate_tree_node(model_obj.root)
-        # Si es un RandomForest simple de MiniML, validamos la estructura raíz
-        elif hasattr(model_obj, 'root') and isinstance(model_obj.root, dict):
-            validate_tree_node(model_obj.root)
-        # Si no, asumimos que es otro tipo de modelo MiniML que no requiere validación explícita de árbol aquí
-
-    # Ejecutar predicción según tipo de modelo
-    try:
-        # Si el modelo es sklearn (posible), usa model.predict(X)
-        # Si es un modelo MiniML, también debería tener un método predict.
-        preds = model_obj.predict(X)
+    # Escalado (Preprocesamiento)
+    scaler = None
+    if scaling:
+        print(f" Aplicando escalado ({scaling})...")
+        X_raw = [row[:-1] for row in clean_dataset]
+        y_raw = [row[-1] for row in clean_dataset]
         
-        # Convertir a lista de tipos básicos si es necesario (e.g., numpy arrays)
-        try:
-            if hasattr(preds, 'tolist') and callable(preds.tolist):
-                return preds.tolist()
-            return list(preds) # Intenta convertir a lista si no es array numpy
-        except Exception:
-            return preds # Devuelve tal cual si no se puede convertir
+        scaler = ml_runtime.MiniScaler(method=scaling)
+        scaler.fit(X_raw)
+        
+        X_scaled = [scaler.transform(row) for row in X_raw]
+        processed_dataset = [x + [y] for x, y in zip(X_scaled, y_raw)]
+    else:
+        print(" Escalado omitido.")
+        processed_dataset = clean_dataset
+
+    # Construcción y Entrenamiento
+    print(f" Entrenando modelo {model_type}...")
+    try:
+        # Usamos Factory para instanciar el modelo correcto
+        model = ml_factory.create_model(model_type, params)
+        model.fit(processed_dataset)
+        
+    except Exception as e:
+        raise RuntimeError(f"Error crítico durante el entrenamiento: {e}")
+
+    # Ensamblaje Final
+    if scaler:
+        model.scaler = scaler
+        if not hasattr(model, 'metadata'): model.metadata = {}
+        model.metadata['scaling_method'] = scaling
+
+    # Registro
+    is_regression = _is_regression_dataset(processed_dataset)
+    meta = {
+        'mode': 'mini',
+        'type': model_type,
+        'task': 'regression' if is_regression else 'classification',
+        'scaling': scaling,
+        'params': params,
+        'time_seconds': time.time() - start_time
+    }
+    
+    _MODEL_REGISTRY[model_name] = {
+        'mode': 'mini',
+        'model': model,
+        'meta': meta
+    }
+
+    print(f"--- Pipeline finalizado exitosamente en {meta['time_seconds']:.4f}s ---")
+    return {'model': model, 'meta': meta}
+
+# -------------------------
+def predict(name_or_model: Union[str, Any], X: List[List[Any]]) -> List[Any]:
+    """
+    Realiza predicciones utilizando un modelo entrenado.
+    AUTOMÁTICAMENTE aplica escalado si el modelo fue entrenado con uno.
+
+    Args:
+        name_or_model: Puede ser el string del nombre registrado O el objeto modelo.
+        X (list): Datos de entrada (features). Lista de listas.
+
+    Returns:
+        List: Predicciones.
+    """
+    if X is None:
+        raise ValueError("predict requiere datos de entrada 'X'.")
+
+    # Resolución del modelo (Polimorfismo de argumentos)
+    model_obj = None
+    if isinstance(name_or_model, str):
+        if name_or_model not in _MODEL_REGISTRY:
+            raise KeyError(f"Modelo '{name_or_model}' no encontrado en el registro.")
+        model_obj = _MODEL_REGISTRY[name_or_model]['model']
+    else:
+        model_obj = name_or_model
+
+    if model_obj is None:
+        raise ValueError("No se pudo resolver un modelo válido para predecir.")
+
+    # Preprocesamiento Automático (Escalado)
+    if hasattr(model_obj, 'scaler') and model_obj.scaler is not None:
+        # MiniScaler.transform espera una fila (vector), iteramos:
+        X_proc = [model_obj.scaler.transform(row) for row in X]
+    else:
+        X_proc = X
+
+    # Inferencia
+    try:
+        preds = model_obj.predict(X_proc)
+        return preds
     except AttributeError:
-        # Fallback: si tiene método 'predict' no encontrado, lanzar error controlado
-        raise RuntimeError("Model object does not support 'predict' method")
+        raise RuntimeError(f"El objeto modelo {type(model_obj)} no tiene método 'predict'.")
 
 # -------------------------
 # Persistencia de modelos
 
 def save_model(name: str, path: str) -> None:
-    """
-    Guarda el modelo en el disco.
-    Si el modelo está en modo 'sklearn' y `joblib` está disponible, usa `joblib.dump`.
-    De lo contrario, para modelos 'mini', usa una serialización personalizada basada en JSON.
-
-    Args:
-        name (str): Nombre del modelo a guardar (debe estar registrado).
-        path (str): Ruta del archivo donde guardar el modelo.
-
-    Raises:
-        KeyError: Si el modelo con el nombre especificado no se encuentra registrado.
-        FileNotFoundError: Si la ruta del directorio padre no existe.
-    """
+    """Guarda el modelo y su scaler (si existe) en JSON."""
     if name not in _MODEL_REGISTRY:
-        raise KeyError(f"Model '{name}' not found")
-    entry = _MODEL_REGISTRY[name]
+        raise KeyError(f"Modelo '{name}' no encontrado.")
     
-    # Asegurarse de que el directorio de destino exista
-    dir_path = os.path.dirname(path)
-    if dir_path and not os.path.exists(dir_path):
-        try:
-            os.makedirs(dir_path)
-        except OSError as e:
-            raise FileNotFoundError(f"Could not create directory '{dir_path}': {e}")
-            
+    entry = _MODEL_REGISTRY[name]
+    model = entry['model']
+    
+    serial_data = {
+        'meta': entry.get('meta', {}),
+        'model_data': {}
+    }
+
     if entry['mode'] == 'sklearn' and _joblib is not None:
         # Usar joblib para modelos sklearn
         _joblib.dump(entry['model'], path)
     else:
-        # MiniML: serializar la estructura del árbol(es) en JSON
-        # Para RandomForest, cada árbol se almacena como entrada (dict).
-        model = entry['model']
-        serial_data = {'type': 'mini_model', 'mode': entry['mode'], 'model_type': entry['type']}
+        # Serialización Scaler
+        if hasattr(model, 'scaler') and model.scaler:
+            serial_data['scaler'] = {
+                'method': model.scaler.method,
+                'params': model.scaler.params,
+                'feature_range': model.scaler.feature_range,
+                'n_features_trained': model.scaler.n_features_trained
+            }
+
+        # Delegación de serialización de estructura al exporter (si está disponible)
+        # Para mantener ml_manager limpio, hacemos una serialización básica aquí o llamamos a exporter
+        # Por simplicidad y robustez en este archivo, replicamos la lógica básica de guardado de estructura
         
-        # Intenta obtener la representación serializable del modelo MiniML
-        if hasattr(model, 'to_serializable'):
-            serial_data['data'] = model.to_serializable()
-        elif hasattr(model, 'root'):
-            # Para árboles simples, guarda la raíz
-            serial_data['root'] = model.root
-        elif hasattr(model, 'trees'):
-            # Para RandomForest, guarda las raíces de todos los árboles
-            serial_data['trees'] = [getattr(t, 'root', None) for t in model.trees]
-        else:
-            # Si no hay una forma clara de serializar, guarda una representación de string (menos robusto)
-            try:
-                serial_data['repr'] = repr(model)
-            except Exception as e:
-                print(f"Warning: Could not get a good representation for model {name}: {e}")
+        if hasattr(model, 'root'): # DecisionTree
+            from .ml_compat import _flatten_tree_to_arrays
+            serial_data['model_data']['type'] = 'tree'
+            if model.root:
+                serial_data['model_data']['struct'] = _flatten_tree_to_arrays(model.root)
                 
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(serial_data, f, indent=2)
+        elif hasattr(model, 'trees'): # RandomForest
+            from .ml_compat import _flatten_tree_to_arrays
+            serial_data['model_data']['type'] = 'forest'
+            serial_data['model_data']['trees'] = []
+            for t in model.trees:
+                if hasattr(t, 'root') and t.root:
+                    serial_data['model_data']['trees'].append(_flatten_tree_to_arrays(t.root))
+
+        elif hasattr(model, 'weights'): # SVM, Linear, NN
+            serial_data['model_data']['type'] = 'weights_based'
+            if hasattr(model, 'W1'): # NN
+                serial_data['model_data']['subtype'] = 'nn'
+                serial_data['model_data']['W1'] = model.W1
+                serial_data['model_data']['W2'] = model.W2
+                serial_data['model_data']['B1'] = model.B1
+                serial_data['model_data']['B2'] = model.B2
+                serial_data['model_data']['config'] = {
+                    'n_inputs': model.n_inputs, 'n_hidden': model.n_hidden, 'n_outputs': model.n_outputs
+                }
+            else: # Linear / SVM
+                serial_data['model_data']['weights'] = model.weights
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(serial_data, f, indent=2)
+    print(f"Modelo '{name}' guardado en {path}")
 
 
 def load_model(name: str, path: str) -> None:
-    """
-    Carga un modelo desde el disco y lo registra bajo el nombre `name`.
-    Intenta cargar primero como un modelo sklearn usando joblib. Si falla,
-    intenta cargar como un modelo MiniML usando la serialización JSON.
-
-    Args:
-        name (str): Nombre bajo el cual registrar el modelo cargado.
-        path (str): Ruta del archivo del modelo a cargar.
-
-    Raises:
-        FileNotFoundError: Si el archivo del modelo no existe.
-        ValueError: Si el formato del archivo del modelo es desconocido o no se puede cargar.
-    """
+    """Carga un modelo MiniML desde JSON."""
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Model file not found at '{path}'")
-        
+        raise FileNotFoundError(f"Archivo '{path}' no encontrado.")
+
     loaded = False
-    # Prueba primero con sklearn.
+
     if _sklearn_available and _joblib is not None:
         try:
             model = _joblib.load(path)
@@ -444,87 +276,65 @@ def load_model(name: str, path: str) -> None:
 
     if not loaded:
         # Fallback para el minicargador
-        try:
+        try:    
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+
+            meta = data.get('meta', {})
+            model_type = meta.get('type', 'unknown')
+            model_data = data.get('model_data', {})
             
-            # Normalizar la estructura de datos si es necesario (especialmente para árboles)
-            data = normalize_tree(data)
+            params = meta.get('params') or {}
+            try:
+                model = ml_factory.create_model(model_type, params)
+            except Exception:
+                print(f"Warning: No se pudo instanciar '{model_type}' via Factory. Usando objeto genérico.")
+                return
 
-            if data.get('type') == 'mini_model':
-                mode = data.get('mode', 'mini') # Asume 'mini' si no se especifica
-                model_type = data.get('model_type', 'unknown')
-                
-                if 'data' in data:
-                    # Si el modelo tiene un método to_serializable, úsalo
-                    if mode == 'mini':
-                        # Crea una instancia genérica y llama a un método de carga
-                        if model_type == 'neural_net':
-                            # Supone que MiniNeuralNetwork tiene un método `from_serializable`
-                            if hasattr(ml_runtime.MiniNeuralNetwork, 'from_serializable'):
-                                model = ml_runtime.MiniNeuralNetwork.from_serializable(data['data'])
-                            else:
-                                raise NotImplementedError("MiniNeuralNetwork.from_serializable not implemented.")
-                        elif model_type == 'linear':
-                            if hasattr(ml_runtime.MiniLinearModel, 'from_serializable'):
-                                model = ml_runtime.MiniLinearModel.from_serializable(data['data'])
-                            else:
-                                raise NotImplementedError("MiniLinearModel.from_serializable not implemented.")
-                        elif model_type == 'svm':
-                             if hasattr(ml_runtime.MiniSVM, 'from_serializable'):
-                                model = ml_runtime.MiniSVM.from_serializable(data['data'])
-                             else:
-                                raise NotImplementedError("MiniSVM.from_serializable not implemented.")
-                        else:
-                             raise ValueError(f"Unsupported MiniML model type for loading from 'data': {model_type}")
-                    else: # Para otros modos si se añaden en el futuro
-                        raise NotImplementedError(f"Loading for mode '{mode}' not implemented yet.")
-                elif 'root' in data:
-                    # Reconstruir un DecisionTree simple
-                    if mode == 'mini':
-                        dt = ml_runtime.DecisionTreeClassifier() # o Regressor, debería inferirse del tipo guardado
-                        dt.root = data['root']
-                        model = dt
-                    else:
-                        raise NotImplementedError(f"Loading for mode '{mode}' with 'root' not implemented yet.")
-                elif 'trees' in data and data['trees'] is not None:
-                    # Reconstruir un RandomForest simple
-                    if mode == 'mini':
-                        rf = ml_runtime.RandomForestClassifier(n_trees=len(data['trees'])) # n_trees es una suposición aquí
-                        rf.trees = []
-                        for root_data in data['trees']:
-                            dt = ml_runtime.DecisionTreeClassifier() # o Regressor
-                            dt.root = root_data
-                            rf.trees.append(dt)
-                        model = rf
-                    else:
-                        raise NotImplementedError(f"Loading for mode '{mode}' with 'trees' not implemented yet.")
+            # Restauración de estado (Simplificada para mantener consistencia)
+            if model_data.get('type') == 'tree' and hasattr(model, 'root'):
+                from core.ml_compat import _unflatten_arrays_to_tree
+                if 'struct' in model_data:
+                    model.root = _unflatten_arrays_to_tree(model_data['struct'])
+                    
+            elif model_data.get('type') == 'forest' and hasattr(model, 'trees'):
+                from core.ml_compat import _unflatten_arrays_to_tree
+                model.trees = []
+                for tree_struct in model_data.get('trees', []):
+                    dt = ml_runtime.DecisionTreeClassifier()
+                    dt.root = _unflatten_arrays_to_tree(tree_struct)
+                    model.trees.append(dt)
+
+            elif model_data.get('type') == 'weights_based':
+                if model_data.get('subtype') == 'nn':
+                    model.W1 = model_data.get('W1')
+                    model.W2 = model_data.get('W2')
+                    model.B1 = model_data.get('B1')
+                    model.B2 = model_data.get('B2')
                 else:
-                    raise ValueError("MiniML model data is missing 'data', 'root', or 'trees' key.")
-                
-                # Registrar el modelo MiniML cargado
-                _MODEL_REGISTRY[name] = {'mode': mode, 'model': model, 'type': model_type}
-                print(f"Model '{name}' loaded as MiniML ({model_type}).")
-                loaded = True
+                    model.weights = model_data.get('weights')
 
-                # Validación adicional de nodos de árbol si el modelo es visible
-                if hasattr(model, 'trees'):
-                    for tree in model.trees:
-                        validate_tree_node(getattr(tree, 'root', None))
-                elif hasattr(model, 'root'):
-                    validate_tree_node(model.root)
+            elif model_data.get('type') == 'knn':
+                model.X_train = model_data.get('X_train')
+                model.y_train = model_data.get('y_train')
 
-            else:
-                raise ValueError("Unknown model format: Expected 'type': 'mini_model'")
-                
+            if 'scaler' in data:
+                s_data = data['scaler']
+                scaler = ml_runtime.MiniScaler(method=s_data['method'], feature_range=s_data['feature_range'])
+                scaler.params = s_data['params']
+                scaler.n_features_trained = s_data.get('n_features_trained')
+                model.scaler = scaler
+
+            _MODEL_REGISTRY[name] = {'mode': 'mini', 'model': model, 'meta': meta}
+            print(f"Modelo '{name}' cargado exitosamente.")
+            loaded = True
         except json.JSONDecodeError:
             raise ValueError(f"Failed to decode JSON from '{path}'. Is it a valid JSON file?")
         except Exception as e:
             raise ValueError(f"Failed to load MiniML model from '{path}'. Error: {e}")
 
-    if not loaded:
-        raise ValueError("Model could not be loaded using either sklearn (joblib) or MiniML (JSON) methods.")
-
+        if not loaded:
+            raise ValueError(f"Model '{name}' could not be loaded using any of the available methods.")
 
 # -------------------------
 # Exportador a código embebido
@@ -744,6 +554,72 @@ def export_model_to_python_function(name: str, out_path: str, fn_name: str = "pr
         
     return out_path
 
+
+def export_to_c(name: str) -> str:
+    """
+    Genera el código C completo y optimizado para firmware (Arduino/AVR).
+    Aplica cuantificación automática para redes neuronales.
+    """
+    if name not in _MODEL_REGISTRY:
+        raise KeyError(f"Modelo '{name}' no encontrado")
+    
+    entry = _MODEL_REGISTRY[name]
+    model = entry['model']
+    
+    # Optimización Automática
+    # Si es una red neuronal y no está cuantizada, hazlo ahora para ahorrar Flash.
+    if hasattr(model, 'quantize') and not getattr(model, 'quantized', False):
+        print(f"[Export] Optimizando modelo '{name}' (Cuantificación int8)...")
+        model.quantize()
+
+    code = []
+    code.append(f"// --- MiniML (EduBot) Export: {name} ---")
+    code.append("// Target: AVR (Arduino Uno/Mega) or ESP8266/32")
+    code.append("// Dependencies: None (Standard C + avr/pgmspace.h)")
+    code.append("")
+    
+    # Exportar Scaler (si existe)
+    has_scaler = False
+    if hasattr(model, 'scaler') and model.scaler:
+        has_scaler = True
+        code.append("// 1. Preprocessing Module")
+        code.append(model.scaler.to_arduino_code(fn_name="model_preprocess"))
+        code.append("")
+        
+    # Exportar Modelo Core
+    if hasattr(model, "to_arduino_code"):
+        code.append("// 2. Inference Core")
+        # Para NN, la función será void(in, out), para árboles float/int(in)
+        # Estandarizamos el nombre interno
+        code.append(model.to_arduino_code(fn_name="model_predict_core"))
+    else:
+        code.append("// Error: Modelo no exportable.")
+        return "\n".join(code)
+        
+    code.append("")
+    code.append("// 3. Public API")
+    
+    # Generar Wrapper Unificado
+    # Detectar tipo de salida (escalar o vector)
+    is_nn = hasattr(model, 'n_outputs')
+    
+    if is_nn:
+        # Red Neuronal: void predict(float* in, float* out)
+        code.append("void predict(float *inputs, float *outputs) {")
+        if has_scaler:
+            code.append("  model_preprocess(inputs); // In-place scaling")
+        code.append("  model_predict_core(inputs, outputs);")
+        code.append("}")
+    else:
+        # Árbol/Regresión: float predict(float* in)
+        code.append("float predict(float *inputs) {")
+        if has_scaler:
+            code.append("  model_preprocess(inputs);")
+        code.append("  return model_predict_core(inputs);")
+        code.append("}")
+    
+    return "\n".join(code)
+
 # -------------------------
 # Comodidad: evaluar
 
@@ -765,110 +641,6 @@ def evaluate_accuracy(name: str, X: List[List[Any]], y_true: List[Any]) -> float
     y_pred = predict(name, X=X)
     # Usar la implementación interna de ML Runtime para precisión
     return ml_runtime.accuracy_score(y_true, y_pred)
-
-# -------------------------
-# Árbol de decisión (DecisionTree)
-
-def train_decision_tree(name: Optional[str] = None, dataset: Optional[List[List[Any]]] = None, *,
-                        model_name: Optional[str] = None,
-                        max_depth: int = 10, min_size: int = 1,
-                        n_features: Optional[int] = None, seed: Optional[int] = None,
-                        backend: Optional[str] = None  # <-- 1. AÑADIR NUEVO PARÁMETRO
-                        ) -> Dict[str, Any]:
-    """
-    Entrena un árbol de decisión inteligente que puede ser de clasificación o regresión.
-    Detecta automáticamente el tipo de salida del dataset.
-
-    Args:
-        name (str, optional): Nombre para registrar el modelo. Defaults to None.
-        dataset (List[List[Any]], optional): Datos de entrenamiento. Defaults to None.
-        model_name (str, optional): Alias para `name`. Defaults to None.
-        max_depth (int, optional): Profundidad máxima del árbol. Defaults to 10.
-        min_size (int, optional): Tamaño mínimo de un nodo para dividir. Defaults to 1.
-        n_features (Optional[int], optional): Número de características a considerar en cada división. Defaults to None.
-        seed (Optional[int], optional): Semilla para la generación de números aleatorios. Defaults to None.
-        backend (Optional[str], optional): Backend a forzar ('mini' o 'sklearn'). 
-                                           Si es None, usa el modo inteligente. Defaults to None.
-
-    Returns:
-        Dict[str, Any]: Metadatos del entrenamiento y el modelo.
-    """
-    # Soporte retrocompatible para `model_name`
-    name = model_name or name
-    if name is None:
-        raise ValueError("Debe especificarse un nombre de modelo (name o model_name).")
-
-    if dataset is None:
-        raise ValueError("El dataset no puede ser None.")
-
-    start = time.time()
-
-    # LÓGICA DE SELECCIÓN DE BACKEND MEJORADA
-    selected_mode = "mini" # Default
-    if backend == "sklearn":
-        if not _sklearn_available:
-            raise ImportError("Scikit-learn backend solicitado pero no está disponible.")
-        selected_mode = "sklearn"
-    elif backend == "mini":
-        selected_mode = "mini"
-    elif backend is None:
-        # Lógica "inteligente" original
-        selected_mode = available_mode()
-    else:
-        raise ValueError(f"Backend '{backend}' no reconocido. Use 'sklearn', 'mini', or None.")
-
-    mode = selected_mode # Usar 'mode' para el resto de la función
-    
-    is_regression = _is_regression_dataset(dataset)
-    meta = {'mode': mode, 'type': 'regression' if is_regression else 'classification'}
-
-    X = [row[:-1] for row in dataset] # Características
-    y = [row[-1] for row in dataset]  # Target
-
-    if mode == "sklearn": 
-        try:
-            if is_regression:
-                from sklearn.tree import DecisionTreeRegressor as SKDecisionTree
-            else:
-                from sklearn.tree import DecisionTreeClassifier as SKDecisionTree
-
-            model = SKDecisionTree(max_depth=max_depth, random_state=seed)
-            model.fit(X, y)
-            _MODEL_REGISTRY[name] = {'mode': 'sklearn', 'model': model, 'type': meta['type']}
-        except Exception as e:
-            raise RuntimeError(f"Error entrenando árbol sklearn: {e}")
-    else: # Esto ahora cubre mode == "mini"
-        try:
-            # Selección automática del modelo según el tipo detectado
-            if is_regression:
-                model = ml_runtime.DecisionTreeRegressor(max_depth=max_depth, min_size=min_size)
-                meta["type"] = "regression"
-            else:
-                model = ml_runtime.DecisionTreeClassifier(max_depth=max_depth, min_size=min_size, n_features=n_features)
-                meta["type"] = "classification"
-
-            # Entrenamiento
-            model.fit(dataset)
-
-            # Validación de la estructura del árbol
-            if hasattr(model, 'trees'): # RandomForest
-                for tree in model.trees:
-                    validate_tree_node(getattr(tree, 'root', None))
-            elif hasattr(model, 'root'): # DecisionTree
-                validate_tree_node(model.root)
-
-            # Registro en memoria
-            _MODEL_REGISTRY[name] = {
-                'mode': 'mini',
-                'model': model,
-                'type': meta['type']
-            }
-        except Exception as e:
-            raise RuntimeError(f"Error entrenando árbol interno: {e}")
-
-    meta['time_seconds'] = time.time() - start
-    model = _MODEL_REGISTRY[name]['model']
-    return {'meta': meta, 'model': model, 'model_name': name}
 
 # -------------------------
 def save_registry(file='registry.json'):
