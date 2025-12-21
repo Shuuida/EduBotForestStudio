@@ -3,682 +3,594 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EduBot Forest Studio - Complete Suite</title>
-    
+    <title>EduBot Forest Studio - Suite Completa</title>
     <script type="text/javascript" src="/eel.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <link href="https://cdn.jsdelivr.net/npm/@xyflow/react@12.0.0-next.16/dist/style.css" rel="stylesheet">
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
+    <link href="https://cdn.jsdelivr.net/npm/reactflow@11.11.4/dist/style.css" rel="stylesheet" />
+    
     <script type="importmap">
         {
             "imports": {
-                "react": "https://esm.sh/react@18.3.1?dev",
-                "react-dom": "https://esm.sh/react-dom@18.3.1?dev",
-                "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?dev",
-                "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime?dev",
-                "@xyflow/react": "https://esm.sh/@xyflow/react@12.0.0-next.16?external=react,react-dom"
+                "react": "https://esm.sh/react@18.2.0",
+                "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?deps=react@18.2.0",
+                "reactflow": "https://esm.sh/reactflow@11.11.4?deps=react@18.2.0,react-dom@18.2.0",
+                "lucide-react": "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0",
+                "zustand": "https://esm.sh/zustand@4.5.2?deps=react@18.2.0",
+                "d3-selection": "https://esm.sh/d3-selection@3.0.0",
+                "d3-zoom": "https://esm.sh/d3-zoom@3.0.0"
             }
         }
     </script>
-
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        vscode: {
-                            bg: '#1e1e1e', sidebar: '#252526', activity: '#333333',
-                            status: '#007acc', text: '#cccccc', textLight: '#ffffff', 
-                            border: '#454545', accent: '#007fd4', hover: '#2a2d2e',
-                            editor: '#1e1e1e', terminal: '#1e1e1e', tabActive: '#1e1e1e', tabInactive: '#2d2d2d'
-                        },
-                        node: {
-                            data: '#3c8dbc', model: '#28a745', logic: '#f39c12', eval: '#9b59b6', nn: '#e74c3c',
-                            py: '#3776ab' // Python Blue
-                        }
-                    },
-                    fontFamily: { sans: ['Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'], mono: ['Fira Code', 'Consolas', 'monospace'] }
-                }
-            }
-        }
-    </script>
-
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        body { overflow: hidden; background-color: #1e1e1e; }
-        .react-flow__node { border: none; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5); }
-        .react-flow__handle { width: 10px; height: 10px; background: #fff; border: 2px solid #555; }
-        .react-flow__handle:hover { background: #007acc; border-color: white; transition: 0.2s; }
-        
-        .edubot-node { min-width: 240px; background: #2d2d2d; border-radius: 8px; overflow: hidden; font-size: 12px; }
-        .edubot-node-header { padding: 8px 12px; color: white; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-        .edubot-node-body { padding: 12px; color: #eee; }
-        .edubot-input { width: 100%; background: #3c3c3c; border: 1px solid #555; color: white; padding: 4px; border-radius: 4px; margin-top: 4px; font-family: monospace; }
-        .edubot-label { display: block; color: #aaa; margin-top: 8px; font-size: 11px; text-transform: uppercase; }
-        .edubot-row { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
-
-        /* Editor Style */
-        .code-editor-area {
-            font-family: 'Fira Code', 'Consolas', monospace;
-            line-height: 1.5;
-            background-color: #1e1e1e;
-            color: #d4d4d4;
-            border: none;
-            resize: none;
-            outline: none;
-            white-space: pre;
-        }
-        
-        ::-webkit-scrollbar { width: 10px; height: 10px; }
-        ::-webkit-scrollbar-track { background: #1e1e1e; }
-        ::-webkit-scrollbar-thumb { background: #444; border-radius: 5px; border: 2px solid #1e1e1e; }
-        ::-webkit-scrollbar-thumb:hover { background: #555; }
-
-        /* Tabs styling */
-        .tab-btn { padding: 8px 16px; font-size: 13px; cursor: pointer; border-right: 1px solid #333; display: flex; align-items: center; gap: 6px; }
-        .tab-btn.active { background-color: #1e1e1e; color: white; border-top: 2px solid #007acc; }
-        .tab-btn.inactive { background-color: #2d2d2d; color: #888; }
-        .tab-btn:hover { background-color: #252526; color: #ddd; }
+        body { background-color: #111827; color: #e5e7eb; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        .react-flow__node { background: #1f2937; border: 1px solid #374151; border-radius: 8px; color: white; min-width: 180px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .react-flow__node.selected { border-color: #3b82f6; box-shadow: 0 0 0 2px #3b82f6; }
+        .forest-node-header { padding: 8px 12px; border-bottom: 1px solid #374151; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; border-top-left-radius: 8px; border-top-right-radius: 8px; }
+        .forest-node-body { padding: 10px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 6px; }
+        .node-input { background-color: #111827; border: 1px solid #374151; color: #d1d5db; padding: 4px 8px; border-radius: 4px; width: 100%; font-size: 0.75rem; outline: none; }
+        .node-input:focus { border-color: #3b82f6; }
+        .node-label { font-size: 0.7rem; color: #9ca3af; margin-bottom: 2px; display: block; }
+        .vscode-terminal { font-family: 'Consolas', 'Monaco', 'Courier New', monospace; background-color: #1e1e1e; color: #cccccc; line-height: 1.4; }
+        @keyframes flowPulse { 0% { opacity: 0.2; transform: scale(1); } 50% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0.2; transform: scale(1); } }
+        .flow-particle { animation: flowPulse 1.5s infinite; }
     </style>
 </head>
-<body class="bg-vscode-bg text-vscode-text font-sans select-none">
+<body>
     <div id="root" class="h-screen w-screen flex flex-col"></div>
-
     <script type="text/babel" data-type="module">
-        import React, { useState, useCallback, useEffect } from 'react';
+        import React, { useState, useEffect, useCallback, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { ReactFlow, Controls, Background, Handle, Position, applyNodeChanges, applyEdgeChanges, addEdge, useNodesState, useEdgesState, ReactFlowProvider } from '@xyflow/react';
+        import ReactFlow, { Background, Controls, addEdge, Handle, useNodesState, useEdgesState, ReactFlowProvider } from 'reactflow';
+        import { Database, GitBranch, Users, Brain, PlayCircle, Sprout, Cpu, Play, Terminal, Trash2, Save, FolderOpen, Code, Layers, FileJson, ArrowRight, Variable, FunctionSquare, Repeat, Split, XCircle, Keyboard, RefreshCw, Calculator, CheckSquare, ArrowLeft, Activity, Box, Package, AlertTriangle } from 'lucide-react';
 
-        // ICONOS
-        const Icons = {
-            Play: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
-            Save: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
-            Export: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
-            Trash: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
-            Bug: ({size=24, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="8" height="14" x="8" y="6" rx="4"/><path d="m19 7-3 3"/><path d="m5 7 3 3"/><path d="m19 19-3-3"/><path d="m5 19 3-3"/><path d="M20 13h-4"/><path d="M4 13h4"/><path d="m10 4 1 2"/><path d="m14 4-1 2"/></svg>,
-            Blocks: ({size=24, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>,
-            Database: ({size=14, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>,
-            Tree: ({size=14, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>,
-            Split: ({size=14, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>,
-            FileCode: ({size=20, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="m10 13-2 2 2 2"/><path d="m14 17 2-2-2-2"/></svg>,
-            FolderOpen: ({size=20, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-3.25 7a2 2 0 0 1-1.8 1.17H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h4l2.5 2.5h7.5"/></svg>,
-            GitBranch: ({size=20, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>,
-            X: ({size=14, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
-            Code: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>,
-            Brain: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>,
-            Activity: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
-            Target: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
-            Refresh: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
-            LayoutSplit: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>,
-            LayoutTab: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>,
-            Terminal: ({size=16, className=""}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        // 1. UTILIDADES Y LÓGICA (REFACTORIZADO: TOPOLOGICAL SORT + SCOPE NESTING)
+        const serializeNodesLinear = (nodes, edges, mode) => {
+            const nodeMap = new Map(nodes.map(n => [n.id, { ...n }]));
+            
+            // --- ORDENAMIENTO TOPOLÓGICO ---
+            const adjacency = new Map(); 
+            const inDegree = new Map();
+            
+            nodes.forEach(n => {
+                adjacency.set(n.id, []);
+                inDegree.set(n.id, 0);
+            });
+
+            edges.forEach(edge => {
+                if (nodeMap.has(edge.source) && nodeMap.has(edge.target)) {
+                    adjacency.get(edge.source).push(edge.target);
+                    inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+                }
+            });
+
+            const queue = [];
+            nodes.forEach(n => { if (inDegree.get(n.id) === 0) queue.push(n); });
+            queue.sort((a, b) => a.position.y - b.position.y); // Desempate visual
+
+            const sortedIds = []; // Usaremos IDs para referencia rápida
+            while (queue.length > 0) {
+                const node = queue.shift();
+                sortedIds.push(node.id);
+                
+                const neighbors = adjacency.get(node.id)
+                    .map(id => nodeMap.get(id))
+                    .sort((a, b) => a.position.y - b.position.y); // Flujo visual vertical
+
+                neighbors.forEach(neighbor => {
+                    inDegree.set(neighbor.id, inDegree.get(neighbor.id) - 1);
+                    if (inDegree.get(neighbor.id) === 0) queue.push(neighbor);
+                });
+            }
+
+            // Agregar nodos cíclicos o sueltos al final si faltaron
+            if (sortedIds.length !== nodes.length) {
+                nodes.forEach(n => { if (!sortedIds.includes(n.id)) sortedIds.push(n.id); });
+            }
+
+            // --- DETECCIÓN DE SCOPE ---
+            // Definimos qué tipos de nodos crean un nuevo nivel de indentación
+            const CONTAINER_TYPES = ['py_class', 'py_func', 'py_if', 'py_loop', 'py_while', 'py_try'];
+            
+            // Mapa para saber quién es el padre (Container) de cada nodo
+            const parentMap = new Map(); // NodeID -> ParentID (null es root)
+            
+            // Recorremos el grafo usando BFS para propagar el Scope
+            const scopeQueue = [];
+            
+            // Iniciamos con los nodos raíz del grafo visual
+            nodes.forEach(n => {
+                // Un nodo es raíz visual si no tiene inputs O si sus inputs no son contenedores directos visuales
+                // Simplificación: Analizar conexiones salientes de Contenedores
+                if(CONTAINER_TYPES.includes(n.type)) {
+                    // Si soy contenedor, mis hijos pertenecen a mi scope (a menos que ya tengan uno asignado más cercano)
+                }
+            });
+
+            // Propagación de Scope Dominante
+            // 1. Inicializar todos en scope 'root'
+            sortedIds.forEach(id => parentMap.set(id, null));
+
+            // 2. Propagar scopes. Iteramos en orden topológico para asegurar que procesamos padres antes que hijos.
+            sortedIds.forEach(currentId => {
+                const currentNode = nodeMap.get(currentId);
+                const currentScope = parentMap.get(currentId); // El scope donde vive este nodo
+
+                // Si este nodo es un contenedor, define un NUEVO scope para sus hijos
+                // Si NO es contenedor, sus hijos heredan el scope actual
+                const effectiveScopeForChildren = CONTAINER_TYPES.includes(currentNode.type) ? currentId : currentScope;
+
+                // Buscar hijos directos (Conexiones salientes)
+                const childrenIds = adjacency.get(currentId);
+                childrenIds.forEach(childId => {
+                    // Solo asignamos padre si aún no tiene (o para resolver conflictos de rutas múltiples,
+                    // priorizamos el contenedor inmediato. Por simplicidad de árbol: First wins o Topology logic).
+                    // En un flujo tipo "Bosque", el padre es el nodo del que cuelgas.
+                    
+                    // Regla: Si el nodo actual es un contenedor, CAPTURA al hijo.
+                    // Si el nodo actual es de paso (ej. variable), PASA el scope que tenía.
+                    
+                    // Verificamos si ya tiene un padre asignado. 
+                    // Si ya tiene padre, hay convergencia. En Python visual simple, mantenemos el primer padre lógico.
+                    if (parentMap.get(childId) === null) {
+                        parentMap.set(childId, effectiveScopeForChildren);
+                    }
+                });
+            });
+
+            // --- CONSTRUCCIÓN DEL ÁRBOL ---
+            const blocksByScope = new Map(); // ScopeID -> [BlockList]
+            blocksByScope.set(null, []); // Root scope
+
+            // Crear la estructura de bloques base
+            const rawBlocks = new Map();
+            
+            sortedIds.forEach(id => {
+                const node = nodeMap.get(id);
+                // Lógica de mapeo de datos original...
+                let block = { ...node.data, type: node.type, id: node.id }; // Guardamos ID para debug
+
+                // --- INYECCIÓN DE DATOS INTELIGENTE (Input/Math/Print) ---
+                const getConnectedInputs = (targetId) => {
+                    return edges.filter(e => e.target === targetId).map(e => {
+                        const src = nodeMap.get(e.source);
+                        return src?.data?.var_name || src?.data?.target || null;
+                    }).filter(Boolean);
+                };
+                
+                if (mode === 'python') {
+                    const inputs = getConnectedInputs(id);
+                    if (node.type === 'py_math' || node.type === 'py_compare') {
+                        if (!block.left && inputs.length > 0) block.left = inputs[0];
+                        if (!block.right && inputs.length > 1) block.right = inputs[1];
+                    }
+                    if (node.type === 'py_print' && inputs.length > 0 && !block.content) {
+                        block.content = inputs[0];
+                    }
+                }
+                // Mapeo ML
+                if (mode === 'ml') {
+                    // CASO 1: Dataset -> Entrenamiento
+                    if (node.type.includes('train')) {
+                        const dsEdge = edges.find(e => e.target === node.id);
+                        if (dsEdge) {
+                            const dsNode = nodeMap.get(dsEdge.source);
+                            // CORRECCIÓN CRÍTICA: " || 'data' " evita que se envíe vacío/undefined
+                            if (dsNode) block.dataset = dsNode.data.name || 'data';
+                        }
+                    }
+
+                    // CASO 2: Entrenamiento -> Predicción 
+                    if (node.type === 'ml_predict') {
+                        const modelEdge = edges.find(e => e.target === node.id);
+                        if (modelEdge) {
+                            const modelNode = nodeMap.get(modelEdge.source);
+                            // CORRECCIÓN CRÍTICA: " || 'model' " evita error de nombre
+                            if (modelNode) block.model = modelNode.data.model_name || 'model';
+                        }
+                    }
+                }
+
+                // Inicializar array de cuerpo para contenedores
+                if (CONTAINER_TYPES.includes(node.type)) {
+                    block.body = [];
+                }
+
+                rawBlocks.set(id, block);
+
+                // ASIGNAR AL GRUPO CORRECTO
+                const parentId = parentMap.get(id);
+                
+                // Si el padre no existe (caso raro de desconexión), mandar a root
+                const safeParentId = rawBlocks.has(parentId) ? parentId : null;
+                
+                if (!blocksByScope.has(safeParentId)) {
+                    blocksByScope.set(safeParentId, []);
+                }
+                blocksByScope.get(safeParentId).push(block);
+            });
+
+            // --- ENSAMBLAJE RECURSIVO ---
+            // Ahora movemos los bloques de los mapas temporales a los arrays 'body' de sus padres
+            // Como iteramos por IDs, necesitamos inyectar las listas.
+            
+            // Las listas en blocksByScope ya están ordenadas topológicamente porque sortedIds lo estaba.
+            
+            // Iteramos sobre todos los scopes (excepto null) y los metemos en su padre
+            blocksByScope.forEach((children, scopeId) => {
+                if (scopeId !== null) {
+                    const parentBlock = rawBlocks.get(scopeId);
+                    if (parentBlock) {
+                        parentBlock.body = children;
+                    }
+                }
+            });
+
+            // Retornamos solo los bloques del nivel raíz (null)
+            // Ya que los hijos están anidados dentro de los padres recursivamente.
+            return blocksByScope.get(null);
         };
 
-        // HOOK PARA GESTIÓN DE ESTADO DE NODOS
-        const useNodeParams = (data, defaultParams) => {
-            const [params, setParams] = useState(data.params || defaultParams);
+        // 2. COMPONENTES UI
+        
+        // --- COMPONENTE ESPECIAL PARA DATASET ---
+        // Este bloque va suelto, antes de definir nodeTypes
+        const DatasetNode = ({ data, id }) => {
+            const [files, setFiles] = useState([]);
+
+            // Efecto: Cuando el usuario elige 'csv', pedimos la lista a Python
             useEffect(() => {
-                data.params = params;
-                if (data.onChange) data.onChange(params);
-            }, [params, data]);
+                if (data.source === 'csv') {
+                    const fetchFiles = async () => {
+                        if (window.eel) {
+                            try {
+                                // LLAMADA AL PUENTE (main.py)
+                                const res = await window.eel.api_file_list()();
+                                if (res && res.datasets) {
+                                    setFiles(res.datasets);
+                                }
+                            } catch (e) {
+                                console.error("Error cargando archivos:", e);
+                            }
+                        }
+                    };
+                    fetchFiles();
+                }
+            }, [data.source]);
 
-            const handleChange = (key, value) => {
-                const val = (key.includes('name') || key === 'path' || key === 'condition' || key === 'var' || key === 'value') ? value : (parseFloat(value) || value);
-                setParams(prev => ({ ...prev, [key]: val }));
-            };
-            return { params, handleChange, setParams };
-        };
-
-        // NODOS MACHINE LEARNING
-
-        const DatasetNode = ({ data }) => {
-            const { params, handleChange } = useNodeParams(data, { name: 'data', path: 'iris.csv' });
             return (
-                <div className="edubot-node border-l-4 border-node-data">
-                    <div className="edubot-node-header bg-node-data bg-opacity-20"><Icons.Database /> <span>Dataset</span></div>
-                    <div className="edubot-node-body">
-                        <label className="edubot-label">Nombre Variable</label>
-                        <input className="edubot-input" value={params.name} onChange={e => handleChange('name', e.target.value)} />
-                        <label className="edubot-label">Archivo CSV</label>
-                        <select className="edubot-input cursor-pointer" value={params.path} onChange={e => handleChange('path', e.target.value)}>
-                            <option value="iris.csv">iris.csv</option>
-                            <option value="titanic.csv">titanic.csv</option>
-                            <option value="diabetes.csv">diabetes.csv</option>
+                <BaseNode title="Dataset" icon={Database} color="bg-blue-600">
+                    <div>
+                        <label className="node-label">Nombre interno</label>
+                        <input name="name" className="node-input nodrag" value={data.name||'data'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} />
+                    </div>
+                    <div className="mt-1">
+                        <label className="node-label">Fuente</label>
+                        <select name="source" className="node-input nodrag" value={data.source||'inline'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}>
+                            <option value="inline">Manual (Inline)</option>
+                            <option value="csv">Archivo CSV/JSON</option>
                         </select>
-                        <div className="mt-2 text-xs text-gray-400">Salida: Matriz (X, y)</div>
                     </div>
-                    <Handle type="source" position={Position.Right} />
-                </div>
-            );
-        };
-
-        const SplitNode = ({ data }) => {
-            const [splitSize, setSplitSize] = useState(data.splitSize || 20);
-            useEffect(() => { data.params = { ...data.params, splitSize }; }, [splitSize]);
-            const handleSplitChange = (type) => setSplitSize(p => type === 'increment' ? Math.min(99, p + 1) : Math.max(1, p - 1));
-
-            return (
-                <div className="edubot-node border-l-4 border-node-logic">
-                    <Handle type="target" position={Position.Left} />
-                    <div className="edubot-node-header bg-node-logic bg-opacity-20"><Icons.Split /> <span>{data.label || 'Split'}</span></div>
-                    <div className="edubot-node-body">
-                        <label className="edubot-label">Tamaño Prueba (%)</label>
-                        <div className="flex items-stretch mt-1">
-                            <button onClick={() => handleSplitChange('decrement')} className="bg-gray-600 text-white p-2 rounded-l-md hover:bg-gray-500">-</button>
-                            <input type="text" readOnly value={splitSize} className="edubot-input text-center flex-grow mx-0 rounded-none cursor-default" style={{marginTop:0}} />
-                            <button onClick={() => handleSplitChange('increment')} className="bg-gray-600 text-white p-2 rounded-r-md hover:bg-gray-500">+</button>
+                    
+                    {/* DROP-DOWN DINÁMICO */}
+                    {data.source === 'csv' && (
+                        <div className="mt-1 animate-fade-in">
+                            <label className="node-label text-blue-300">Seleccionar Archivo</label>
+                            <select 
+                                name="path" 
+                                className="node-input nodrag border-blue-500" 
+                                value={data.path || ''} 
+                                onChange={e => data.onChange(id, { ...data, path: e.target.value })}
+                            >
+                                <option value="">-- Elige un archivo --</option>
+                                {files.length === 0 && <option disabled>Buscando en /datasets...</option>}
+                                {files.map(f => (
+                                    <option key={f} value={f}>{f}</option>
+                                ))}
+                            </select>
                         </div>
+                    )}
+                </BaseNode>
+            );
+        };
+
+        const SimulationView = ({ active, status }) => {
+            const [step, setStep] = useState(0);
+            useEffect(() => { if (!active || status === 'error') return; const i = setInterval(() => setStep(s => (s + 1) % 5), 600); return () => clearInterval(i); }, [active, status]);
+            const c = status === 'error' ? 'text-red-500' : active ? 'text-green-400' : 'text-gray-600';
+            const bg = status === 'error' ? 'bg-red-900/50 border-red-500' : active ? 'bg-green-900/50 border-green-500' : 'bg-gray-800 border-gray-600';
+            return (
+                <div className="flex flex-col items-center justify-center h-full bg-[#111827] relative overflow-hidden">
+                    <div className="absolute inset-0 opacity-5" style={{backgroundImage: 'radial-gradient(#4ade80 1px, transparent 1px)', backgroundSize: '30px 30px'}}></div>
+                    <h2 className={`text-xl font-mono mb-8 flex items-center gap-3 ${c}`}><Activity className={active ? "animate-pulse" : ""} />{status === 'error' ? 'ERROR' : active ? 'SIMULACIÓN: ACTIVA' : 'INACTIVO'}</h2>
+                    <div className="flex items-center gap-16 relative">
+                        <div className="flex flex-col gap-4">{[0,1,2].map(i => <div key={i} className={`w-12 h-12 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${bg} ${step === 0 && active ? 'scale-110 shadow-[0_0_15px_currentColor]' : ''}`}><span className="text-[10px] font-bold">X{i}</span></div>)}</div>
+                        <div className={`w-24 h-24 rounded-xl border-2 flex items-center justify-center z-10 transition-all duration-300 ${bg} ${step === 2 && active ? 'scale-110 rotate-3 shadow-[0_0_20px_currentColor]' : ''}`}><Brain size={40} className={active ? "animate-pulse" : "opacity-50"} /></div>
+                        <div className={`w-16 h-16 rounded-full border-2 flex items-center justify-center z-10 transition-all duration-300 ${bg} ${step === 4 && active ? 'scale-125 shadow-[0_0_25px_currentColor]' : ''}`}><span className="text-xs font-bold">Y_PRED</span></div>
                     </div>
-                    <Handle type="source" position={Position.Right} id="train" style={{ top: '30%' }} />
-                    <Handle type="source" position={Position.Right} id="test" style={{ top: '70%' }} />
                 </div>
             );
         };
 
-        const ModelNodeUI = ({ label, icon: Icon, colorClass, children }) => (
-            <div className={`edubot-node border-l-4 ${colorClass}`}>
-                <Handle type="target" position={Position.Left} />
-                <div className={`edubot-node-header ${colorClass.replace('border-', 'bg-')} bg-opacity-20`}>
-                    <Icon /> <span>{label}</span>
+        const TerminalLog = ({ logs }) => {
+            const endRef = useRef(null);
+            useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [logs]);
+            return (
+                <div className="vscode-terminal p-3 h-full overflow-y-auto text-sm">
+                    {logs.map((log, i) => {
+                        let cl = 'text-gray-400';
+                        if (log.type === 'error') cl = 'text-red-400'; else if (log.type === 'warn') cl = 'text-yellow-400'; else if (log.type === 'success') cl = 'text-green-400'; else if (log.type === 'output') cl = 'text-white';
+                        return <div key={i} className={`whitespace-pre-wrap break-words mb-0.5 ${cl}`}>{log.type !== 'output' && <span className="opacity-50 text-xs mr-2 select-none">[{log.time}]</span>}<span>{log.msg}</span></div>;
+                    })}
+                    <div ref={endRef} />
                 </div>
-                <div className="edubot-node-body">{children}</div>
-                <Handle type="source" position={Position.Right} />
+            );
+        };
+
+        const SidebarBtn = ({ label, icon: Icon, color, nodeType, onDragStart }) => (
+            <div 
+                className="w-full text-left p-2 hover:bg-gray-800 rounded-md flex items-center gap-3 text-sm transition-colors group cursor-grab active:cursor-grabbing" 
+                draggable 
+                onDragStart={(e) => onDragStart(e, nodeType, label)}
+            >
+                <Icon size={16} className={`${color} group-hover:scale-110 transition-transform`} /><span className="text-gray-300 group-hover:text-white">{label}</span>
             </div>
         );
 
-        const DTNode = ({ data }) => {
-            const { params, handleChange } = useNodeParams(data, { model_name: 'dt_model', max_depth: 10, min_size: 2 });
-            return (
-                <ModelNodeUI label="Árbol de Decisión" icon={Icons.Tree} colorClass="border-node-model">
-                    <label className="edubot-label">Nombre</label>
-                    <input className="edubot-input mb-2" value={params.model_name} onChange={e => handleChange('model_name', e.target.value)} />
-                    <div className="edubot-row">
-                        <div className="flex-1"><label className="edubot-label">Profundidad</label><input type="number" className="edubot-input" value={params.max_depth} onChange={e => handleChange('max_depth', e.target.value)} /></div>
-                        <div className="flex-1"><label className="edubot-label">Min Size</label><input type="number" className="edubot-input" value={params.min_size} onChange={e => handleChange('min_size', e.target.value)} /></div>
-                    </div>
-                </ModelNodeUI>
-            );
-        };
-
-        const RFNode = ({ data }) => {
-            const { params, handleChange, setParams } = useNodeParams(data, { model_name: 'rf_model', n_trees: 5, max_depth: 10 });
-            const handleTreeCount = (inc) => setParams(p => ({...p, n_trees: Math.max(1, (p.n_trees || 5) + inc)}));
-            return (
-                <ModelNodeUI label="Bosque Aleatorio" icon={Icons.Tree} colorClass="border-node-model">
-                    <label className="edubot-label">Nombre</label>
-                    <input className="edubot-input mb-2" value={params.model_name} onChange={e => handleChange('model_name', e.target.value)} />
-                    <label className="edubot-label">Árboles</label>
-                    <div className="flex items-stretch mt-1 mb-2">
-                        <button onClick={() => handleTreeCount(-1)} className="bg-gray-600 text-white p-2 rounded-l-md hover:bg-gray-500">-</button>
-                        <input type="text" readOnly value={params.n_trees} className="edubot-input text-center flex-grow mx-0 rounded-none" style={{marginTop:0}} />
-                        <button onClick={() => handleTreeCount(1)} className="bg-gray-600 text-white p-2 rounded-r-md hover:bg-gray-500">+</button>
-                    </div>
-                    <label className="edubot-label">Profundidad Máx</label>
-                    <input type="number" className="edubot-input" value={params.max_depth} onChange={e => handleChange('max_depth', e.target.value)} />
-                </ModelNodeUI>
-            );
-        };
-
-        const SVMNode = ({ data }) => {
-            const { params, handleChange } = useNodeParams(data, { model_name: 'svm_model', learning_rate: 0.001, epochs: 500 });
-            return (
-                <ModelNodeUI label="SVM (Mini)" icon={Icons.Target} colorClass="border-node-logic">
-                    <label className="edubot-label">Nombre</label>
-                    <input className="edubot-input mb-2" value={params.model_name} onChange={e => handleChange('model_name', e.target.value)} />
-                    <label className="edubot-label">Learning Rate</label>
-                    <input type="number" step="0.001" className="edubot-input" value={params.learning_rate} onChange={e => handleChange('learning_rate', e.target.value)} />
-                </ModelNodeUI>
-            );
-        };
-
-        const NNNode = ({ data }) => {
-            const { params, handleChange } = useNodeParams(data, { model_name: 'nn_model', hidden_size: 4, lr: 0.01 });
-            return (
-                <ModelNodeUI label="Red Neuronal" icon={Icons.Brain} colorClass="border-node-nn">
-                    <label className="edubot-label">Nombre</label>
-                    <input className="edubot-input mb-2" value={params.model_name} onChange={e => handleChange('model_name', e.target.value)} />
-                    <div className="edubot-row">
-                        <div className="flex-1"><label className="edubot-label">Hidden</label><input type="number" className="edubot-input" value={params.hidden_size} onChange={e => handleChange('hidden_size', e.target.value)} /></div>
-                        <div className="flex-1"><label className="edubot-label">LR</label><input type="number" step="0.01" className="edubot-input" value={params.lr} onChange={e => handleChange('lr', e.target.value)} /></div>
-                    </div>
-                </ModelNodeUI>
-            );
-        };
-
-        const LinearNode = ({ data }) => {
-            const { params, handleChange } = useNodeParams(data, { model_name: 'linear_model', learning_rate: 0.01 });
-            return (
-                <ModelNodeUI label="Modelo Lineal" icon={Icons.Activity} colorClass="border-node-logic">
-                    <label className="edubot-label">Nombre</label>
-                    <input className="edubot-input mb-2" value={params.model_name} onChange={e => handleChange('model_name', e.target.value)} />
-                    <label className="edubot-label">Learning Rate</label>
-                    <input type="number" step="0.001" className="edubot-input" value={params.learning_rate} onChange={e => handleChange('learning_rate', e.target.value)} />
-                </ModelNodeUI>
-            );
-        };
-
-        const PredictNode = ({ data }) => (
-            <div className="edubot-node border-l-4 border-node-eval">
-                <Handle type="target" position={Position.Left} id="model" style={{ top: '30%' }} />
-                <Handle type="target" position={Position.Left} id="data" style={{ top: '70%' }} />
-                <div className="edubot-node-header bg-node-eval bg-opacity-20"><span className="text-lg">🚀</span> <span>Predecir</span></div>
-                <div className="edubot-node-body">
-                    <div className="text-xs text-gray-400 mb-2">Entradas:</div>
-                    <div className="text-xs bg-gray-800 p-1 rounded mb-1">⬅ Modelo</div>
-                    <div className="text-xs bg-gray-800 p-1 rounded">⬅ Datos</div>
+        const BaseNode = ({ data, title, icon: Icon, color, children }) => (
+            <div>
+                <div className={`forest-node-header ${color} text-white`}>
+                    <Icon size={16} />
+                    <span>{title}</span>
                 </div>
-                <Handle type="source" position={Position.Right} />
+                <div className="forest-node-body">{children}</div>
+                <Handle type="target" position="left" className="!bg-gray-400 !w-3 !h-3 hover:!bg-white" />
+                <Handle type="source" position="right" className="!bg-blue-500 !w-3 !h-3 hover:!bg-white" />
             </div>
         );
 
-        const EvalNode = ({ data }) => (
-            <div className="edubot-node border-l-4 border-node-eval">
-                 <Handle type="target" position={Position.Left} />
-                <div className="edubot-node-header bg-node-eval bg-opacity-20"><Icons.Activity /> <span>Evaluar</span></div>
-                <div className="edubot-node-body"><div className="text-xs text-gray-400">Compara Real vs Pred</div></div>
-            </div>
-        );
-
-        // NODOS DE FUNDAMENTOS PYTHON
-
-        const PyAssignNode = ({ data }) => {
-            const { params, handleChange } = useNodeParams(data, { name: 'variable', value: '0' });
-            return (
-                <ModelNodeUI label="Asignar Variable" icon={Icons.Code} colorClass="border-node-py">
-                    <label className="edubot-label">Nombre</label>
-                    <input className="edubot-input" value={params.name} onChange={e => handleChange('name', e.target.value)} />
-                    <label className="edubot-label">Valor (Expresión)</label>
-                    <input className="edubot-input" value={params.value} onChange={e => handleChange('value', e.target.value)} />
-                </ModelNodeUI>
-            );
-        };
-
-        const PyPrintNode = ({ data }) => {
-            const { params, handleChange } = useNodeParams(data, { value: '"Hola Mundo"' });
-            return (
-                <ModelNodeUI label="Imprimir (Print)" icon={Icons.Terminal} colorClass="border-node-py">
-                    <label className="edubot-label">Texto o Variable</label>
-                    <input className="edubot-input" value={params.value} onChange={e => handleChange('value', e.target.value)} />
-                </ModelNodeUI>
-            );
-        };
-
-        const PyIfNode = ({ data }) => {
-            const { params, handleChange } = useNodeParams(data, { condition: 'x > 5' });
-            return (
-                <ModelNodeUI label="Condicional (If)" icon={Icons.GitBranch} colorClass="border-node-logic">
-                    <label className="edubot-label">Condición</label>
-                    <input className="edubot-input" value={params.condition} onChange={e => handleChange('condition', e.target.value)} />
-                    <div className="mt-2 text-xs text-gray-400">Conecta debajo para el cuerpo</div>
-                </ModelNodeUI>
-            );
-        };
-
-        const PyLoopNode = ({ data }) => {
-            const { params, handleChange } = useNodeParams(data, { var: 'i', start: '0', end: '10', step: '1' });
-            return (
-                <ModelNodeUI label="Bucle For (Range)" icon={Icons.Refresh} colorClass="border-node-logic">
-                    <div className="flex gap-2">
-                        <div className="w-1/3"><label className="edubot-label">Var</label><input className="edubot-input" value={params.var} onChange={e => handleChange('var', e.target.value)} /></div>
-                        <div className="w-2/3"><label className="edubot-label">Fin</label><input className="edubot-input" value={params.end} onChange={e => handleChange('end', e.target.value)} /></div>
-                    </div>
-                </ModelNodeUI>
-            );
-        };
-
-        const PyFuncNode = ({ data }) => {
-            const { params, handleChange } = useNodeParams(data, { name: 'mi_funcion', args: 'a, b' });
-            return (
-                <ModelNodeUI label="Definir Función" icon={Icons.Code} colorClass="border-node-model">
-                    <label className="edubot-label">Nombre</label>
-                    <input className="edubot-input" value={params.name} onChange={e => handleChange('name', e.target.value)} />
-                    <label className="edubot-label">Argumentos</label>
-                    <input className="edubot-input" value={params.args} onChange={e => handleChange('args', e.target.value)} />
-                </ModelNodeUI>
-            );
-        };
-
-
+        // 3. DEFINICIÓN DE NODOS
         const nodeTypes = {
-            ml_dataset: DatasetNode,
-            ml_split_block: SplitNode,
-            ml_dataset_block: DatasetNode,
-            ml_train_dt: DTNode,
-            ml_train_rf: RFNode,
-            ml_train_svm: SVMNode,
-            ml_train_linear: LinearNode,
-            ml_train_nn: NNNode,
-            ml_predict: PredictNode,
-            ml_predict_block: PredictNode,
-            ml_eval: EvalNode,
-            // Nuevos tipos para Python puro (mapeados por translation_rules)
-            assign: PyAssignNode,
-            print: PyPrintNode,
-            if: PyIfNode,
-            for_range: PyLoopNode,
-            function: PyFuncNode
+            ml_dataset: DatasetNode, // Usamos el componente corregido
+            ml_train_dt: ({ data, id }) => <BaseNode title="Decision Tree" icon={GitBranch} color="bg-emerald-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Depth</label><input name="max_depth" type="number" className="node-input nodrag" value={data.max_depth||5} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">MinLeaf</label><input name="min_size" type="number" className="node-input nodrag" value={data.min_size||1} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
+            ml_train_rf: ({ data, id }) => <BaseNode title="Random Forest" icon={Layers} color="bg-emerald-700"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Trees</label><input name="n_trees" type="number" className="node-input nodrag" value={data.n_trees||10} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">Depth</label><input name="max_depth" type="number" className="node-input nodrag" value={data.max_depth||5} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
+            ml_train_knn: ({ data, id }) => <BaseNode title="KNN" icon={Users} color="bg-purple-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="mt-1"><label className="node-label">K</label><input name="k" type="number" className="node-input nodrag" value={data.k||3} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><select name="task" className="node-input nodrag mt-1" value={data.task||'classification'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="classification">Clasificación</option><option value="regression">Regresión</option></select></BaseNode>,
+            ml_train_svm: ({ data, id }) => <BaseNode title="SVM" icon={Split} color="bg-pink-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Iter</label><input name="n_iters" type="number" className="node-input nodrag" value={data.n_iters||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">LR</label><input name="learning_rate" type="number" step="0.001" className="node-input nodrag" value={data.learning_rate||0.001} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
+            ml_train_linear: ({ data, id }) => <BaseNode title="Linear Reg" icon={ArrowRight} color="bg-cyan-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Epochs</label><input name="epochs" type="number" className="node-input nodrag" value={data.epochs||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">LR</label><input name="learning_rate" type="number" step="0.01" className="node-input nodrag" value={data.learning_rate||0.01} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
+            ml_train_nn: ({ data, id }) => <BaseNode title="Neural Net" icon={Brain} color="bg-indigo-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="grid grid-cols-2 gap-1 mt-1"><div><label className="node-label">Hidden</label><input name="hidden_size" type="number" className="node-input nodrag" value={data.hidden_size||4} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">Epochs</label><input name="epochs" type="number" className="node-input nodrag" value={data.epochs||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">LR</label><input name="lr" type="number" step="0.01" className="node-input nodrag" value={data.lr||0.1} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">Inputs</label><input name="n_inputs" type="number" className="node-input nodrag" value={data.n_inputs||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
+            ml_predict: ({ data, id }) => <BaseNode title="Ejecutar" icon={PlayCircle} color="bg-red-600"><select name="action_type" className="node-input nodrag mb-2" value={data.action_type||'predict'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="predict">Predict</option><option value="eval">Eval</option></select>{data.action_type==='predict'&&<div><label className="node-label">X</label><input name="X" placeholder="[[1,2]]" className="node-input nodrag" value={data.X||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div>}</BaseNode>,
+            
+            py_var: ({ data, id }) => <BaseNode title="Variable" icon={Variable} color="bg-yellow-600"><div className="flex gap-2 items-center"><input name="var_name" placeholder="x" className="node-input nodrag w-1/3" value={data.var_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-bold">=</span><input name="value" placeholder="10" className="node-input nodrag" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
+            py_print: ({ data, id }) => <BaseNode title="Print" icon={Terminal} color="bg-gray-600"><input name="content" placeholder="msg" className="node-input nodrag" value={data.content||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_if: ({ data, id }) => <BaseNode title="If" icon={Split} color="bg-orange-600"><input name="condition" placeholder="x > 5" className="node-input nodrag" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300 mt-1">Conectar a derecha</div></BaseNode>,
+            py_loop: ({ data, id }) => <BaseNode title="For" icon={Repeat} color="bg-orange-700"><div className="flex gap-1 items-center mb-1"><span>for</span><input name="iterator" className="node-input nodrag w-8 p-0 text-center" value={data.iterator||'i'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span>in</span></div><input name="iterable" placeholder="range(10)" className="node-input nodrag" value={data.iterable||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_while: ({ data, id }) => <BaseNode title="While" icon={RefreshCw} color="bg-orange-800"><input name="condition" placeholder="cond" className="node-input nodrag" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_math: ({ data, id }) => <BaseNode title="Math" icon={Calculator} color="bg-teal-600"><div className="flex gap-1"><input name="left" className="node-input nodrag w-1/3" value={data.left||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><select name="op" className="node-input nodrag w-1/4 p-0 text-center" value={data.op||'+'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option>+</option><option>-</option><option>*</option><option>/</option></select><input name="right" className="node-input nodrag w-1/3" value={data.right||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div className="mt-1 flex items-center gap-1"><span className="text-xs">Save:</span><input name="target" placeholder="res" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
+            py_compare: ({ data, id }) => <BaseNode title="Compare" icon={CheckSquare} color="bg-cyan-700"><div className="flex gap-1"><input name="left" className="node-input nodrag w-1/3" value={data.left||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><select name="op" className="node-input nodrag w-1/4 p-0 text-center" value={data.op||'=='} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option>==</option><option>&gt;</option><option>&lt;</option></select><input name="right" className="node-input nodrag w-1/3" value={data.right||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
+            py_func: ({ data, id }) => <BaseNode title="Function" icon={FunctionSquare} color="bg-violet-600"><input name="func_name" placeholder="name" className="node-input nodrag mb-1" value={data.func_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="args" placeholder="args" className="node-input nodrag" value={data.args||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_return: ({ data, id }) => <BaseNode title="Return" icon={ArrowLeft} color="bg-rose-600"><input name="value" placeholder="val" className="node-input nodrag" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_control: ({ data, id }) => <BaseNode title="Control" icon={XCircle} color="bg-red-800"><select name="type" className="node-input nodrag" value={data.type||'break'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="break">Break</option><option value="continue">Continue</option><option value="pass">Pass</option></select></BaseNode>,
+            py_input: ({ data, id }) => <BaseNode title="Input" icon={Keyboard} color="bg-slate-600"><input name="prompt" placeholder="msg" className="node-input nodrag mb-1" value={data.prompt||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="target" placeholder="var" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_class: ({ data, id }) => <BaseNode title="Class" icon={Box} color="bg-indigo-700"><input name="name" placeholder="Name" className="node-input nodrag mb-1" value={data.name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="bases" placeholder="Inherits" className="node-input nodrag" value={data.bases||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_import: ({ data, id }) => <BaseNode title="Import" icon={Package} color="bg-sky-700"><div className="flex gap-1 mb-1"><span className="text-xs">from</span><input name="from" className="node-input nodrag" value={data.from||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div className="flex gap-1"><span className="text-xs">import</span><input name="names" className="node-input nodrag" value={data.names||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
+            py_try: ({ data, id }) => <BaseNode title="Try/Except" icon={AlertTriangle} color="bg-amber-600"><div className="text-xs text-gray-300">Errors handled below</div></BaseNode>
         };
 
-        // PANTALLA DE BIENVENIDA
-        const WelcomeScreen = ({ onNewProject, onOpenProject }) => { 
-            return ( 
-                <div className="h-full w-full flex flex-col bg-vscode-bg text-vscode-text font-sans"> 
-                    <div className="h-9 bg-vscode-bg flex items-center px-4 border-b border-vscode-border"> 
-                        <div className="flex items-center bg-vscode-sidebar px-3 py-1 text-sm text-vscode-textLight border-t border-vscode-status"> 
-                            <span className="mr-2">Bienvenido</span> <Icons.X size={14} className="hover:text-white cursor-pointer" /> 
-                        </div> 
-                    </div> 
-                    <div className="flex-1 flex justify-center items-start pt-20 overflow-y-auto"> 
-                        <div className="max-w-4xl w-full"> 
-                            <div className="flex items-center gap-4 border-b border-gray-700 pb-6 mb-8"> 
-                                <Icons.Blocks size={64} className="text-vscode-accent"/> 
-                                <div> 
-                                    <h1 className="text-3xl font-light text-white">EduBot Forest Studio</h1> 
-                                    <p className="text-gray-400 mt-1">Entorno de programación visual en bosques para modelos de Machine Learning.</p> 
-                                </div> 
-                            </div> 
-                            <div className="grid grid-cols-2 gap-8"> 
-                                <div> 
-                                    <h3 className="text-xl font-semibold mb-4 text-white">Comenzar</h3> 
-                                    <div className="space-y-3"> 
-                                        <div onClick={onNewProject} className="bg-vscode-activity p-3 border-l-2 border-vscode-status cursor-pointer hover:bg-vscode-hover">
-                                            <h4 className="font-semibold text-white flex items-center gap-2"><Icons.FileCode size={16} /> Crear nuevo flujo</h4> 
-                                            <p className="text-xs mt-1">Empieza a construir tu pipeline de ML desde cero.</p> 
-                                        </div> 
-                                        <div onClick={onOpenProject} className="bg-vscode-activity p-3 border-l-2 border-transparent hover:border-vscode-status cursor-pointer hover:bg-vscode-hover"> 
-                                            <h4 className="font-semibold text-white flex items-center gap-2"><Icons.FolderOpen size={16} /> Abrir proyecto</h4> 
-                                            <p className="text-xs mt-1">Cargar un archivo .edubotproj guardado.</p> 
-                                        </div> 
-                                    </div> 
-                                </div> 
-                            </div> 
-                        </div> 
-                    </div> 
-                </div> 
-            ); 
-        };
+        // --- 4. PANTALLAS DE LA APP ---
+        const WelcomeScreen = ({ onNew, onOpen }) => (
+            <div className="h-full flex flex-col items-center justify-center bg-gray-900 text-white relative overflow-hidden">
+                <div className="absolute inset-0 opacity-10 pointer-events-none">
+                    <div className="absolute top-0 left-0 w-64 h-64 bg-green-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
+                    <div className="absolute bottom-0 left-20 w-64 h-64 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div>
+                </div>
+                <div className="z-10 text-center space-y-8 p-8 bg-gray-800/50 backdrop-blur-md rounded-2xl border border-gray-700 shadow-2xl max-w-lg w-full">
+                    <div className="flex justify-center mb-4"><div className="bg-green-500 p-4 rounded-full shadow-lg shadow-green-500/20"><Sprout size={48} className="text-white" /></div></div>
+                    <div><h1 className="text-4xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">EduBot Forest Studio</h1><p className="text-gray-400 mt-2">v1.0 Stable • Python • Machine Learning • TinyML</p></div>
+                    <div className="space-y-3">
+                        <button onClick={() => onNew('ml')} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FileJson className="text-blue-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Nuevo Proyecto ML</div><div className="text-xs text-gray-400">Crear modelos de IA visualmente</div></div></button>
+                        <button onClick={() => onNew('python')} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><Code className="text-yellow-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Fundamentos Python</div><div className="text-xs text-gray-400">Aprender lógica de programación</div></div></button>
+                        <button onClick={onOpen} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FolderOpen className="text-purple-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Abrir Proyecto</div><div className="text-xs text-gray-400">Cargar archivo .edubotproj</div></div></button>
+                    </div>
+                </div>
+            </div>
+        );
 
-        // EDITOR PRINCIPAL (TABBED VIEW + LOGIC)
-        const EditorInterface = ({ onGoHome, initialData }) => {
-            const defaultNodes = [
-                { id: '1', type: 'ml_dataset', position: { x: 50, y: 50 }, data: { params: { name: 'data', path: 'iris.csv' } } },
-            ];
+        const EditorContent = ({ mode, onBack, initialNodes, initialEdges }) => {
+            const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes || []);
+            const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges || []);
+            const [reactFlowInstance, setReactFlowInstance] = useState(null);
+            const [logs, setLogs] = useState([{ time: new Date().toLocaleTimeString(), msg: `Modo: ${mode === 'ml' ? 'Machine Learning' : 'Python Fundamentals'}`, type: 'info' }]);
+            const [activeTab, setActiveTab] = useState('forest'); 
+            const [pythonCode, setPythonCode] = useState("# El código generado aparecerá aquí...");
+            const [memoryStats, setMemoryStats] = useState(null);
+            const [simulationStatus, setSimulationStatus] = useState({ active: false, status: 'idle' });
+            const reactFlowWrapper = useRef(null);
+
+            const addLog = (msg, type = 'info') => setLogs(p => [...p, { time: new Date().toLocaleTimeString(), msg, type }]);
             
-            const [nodes, setNodes, onNodesChange] = useNodesState(initialData?.nodes || defaultNodes);
-            const [edges, setEdges, onEdgesChange] = useEdgesState(initialData?.edges || []);
-            const onConnect = useCallback((params) => setEdges((eds) => addEdge({ ...params, animated: true, style:{stroke:'#888'} }, eds)), [setEdges]);
-
-            const [pythonCode, setPythonCode] = useState("# Esperando bloques para traducir...");
-            const [consoleOutput, setConsoleOutput] = useState("EduBot Core listo.\n");
-            const [isSyncing, setIsSyncing] = useState(false);
+            const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
             
-            // UI States
-            const [layoutMode, setLayoutMode] = useState('tabs'); // 'tabs' | 'split'
-            const [activeTab, setActiveTab] = useState('visual'); // 'visual' | 'code'
-            const [toolboxMode, setToolboxMode] = useState('ml'); // 'ml' | 'python'
-
-            // Sincronizar datos de nodos para el backend
-            const updateNodeData = useCallback((id, newParams) => {
-                setNodes((nds) => nds.map((node) => {
-                    if (node.id === id) return { ...node, data: { ...node.data, params: newParams } };
-                    return node;
-                }));
-            }, [setNodes]);
-
-            useEffect(() => {
-                setNodes((nds) => nds.map(n => {
-                    if (n.data.onChange) return n;
-                    return { ...n, data: { ...n.data, onChange: (p) => updateNodeData(n.id, p) } };
-                }));
-            }, [updateNodeData, setNodes]);
-
-            // Traducción Bloques -> Python
-            useEffect(() => {
-                const timer = setTimeout(async () => {
-                    if (isSyncing) return;
-                    if (!window.eel) return;
-                    const simplified = nodes.map(n => ({ type: n.type, id: n.id, ...(n.data.params || {}), splitSize: n.data.splitSize }));
-                    try {
-                        const res = await window.eel.api_translate('to_python', simplified, null, 'code')();
-                        if (res && res.result) setPythonCode(res.result);
-                    } catch(e) { console.error(e); }
-                }, 800);
-                return () => clearTimeout(timer);
-            }, [nodes, edges, isSyncing]);
-
-            // Traducción Python -> Bloques
-            const syncVisual = async () => {
-                setIsSyncing(true);
-                setConsoleOutput(prev => prev + "> Sincronizando visual...\n");
-                try {
-                    const res = await window.eel.api_translate('to_blocks', null, pythonCode, 'code')();
-                    if (res && res.result) {
-                        const newNodes = res.result.map((blk, i) => ({
-                            id: `gen-${i}-${Date.now()}`,
-                            type: blk.type.startsWith('ml_') ? blk.type : blk.type, // Soporta tipos puros también
-                            position: { x: 50 + (i*60), y: 50 + (i*100) },
-                            data: { params: blk } 
-                        }));
-                        setNodes(newNodes);
-                        setEdges([]);
-                        setConsoleOutput(prev => prev + "[OK] Interfaz actualizada.\n");
-                    }
-                } catch(e) { setConsoleOutput(prev => prev + `[ERROR] ${e}\n`); } 
-                finally { setTimeout(() => setIsSyncing(false), 1000); }
+            const onNodeDataChange = (id, newData) => {
+                setNodes((nds) => nds.map((node) => node.id === id ? { ...node, data: newData } : node));
             };
 
-            const runCode = async () => {
-                setConsoleOutput(prev => prev + "\n> Ejecutando flujo...\n");
-                const simplified = nodes.map(n => ({ type: n.type, ...(n.data.params || {}) }));
-                // Si estamos en modo ML, ejecutamos el pipeline. Si estamos en modo Python, ejecutamos el código.
-                if (toolboxMode === 'ml') {
-                    const res = await window.eel.api_execute(simplified)();
-                    if (res.success) {
-                        setConsoleOutput(prev => prev + `[EXITO] Pipeline completado.\n`);
-                        if(res.results) res.results.forEach(r => setConsoleOutput(prev => prev + `  - ${r.action}: OK\n`));
-                    } else { setConsoleOutput(prev => prev + `[ERROR] ${res.error}\n`); }
-                } else {
-                    // Modo Python Puro: Ejecuta el código generado en sandbox
-                    const res = await window.eel.api_run_code(pythonCode)();
-                    if(res.success) {
-                        setConsoleOutput(prev => prev + `[SALIDA] \n${res.output}\n`);
-                    } else {
-                        setConsoleOutput(prev => prev + `[ERROR] ${res.error}\n`);
-                    }
-                }
-            };
+            const onDragOver = useCallback((event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }, []);
+            
+            const onDrop = useCallback((event) => {
+                event.preventDefault();
+                const type = event.dataTransfer.getData('application/reactflow/type');
+                const label = event.dataTransfer.getData('application/reactflow/label');
+                if (!type || !reactFlowInstance) return;
+                const position = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+                const newNode = { id: `${type}_${Date.now()}`, type, position, data: { label, onChange: onNodeDataChange, model_name: `m_${Math.floor(Math.random()*100)}` } };
+                setNodes((nds) => nds.concat(newNode));
+                addLog(`Nodo: ${label}`);
+            }, [reactFlowInstance]);
 
-            const exportToC = async () => {
-                setConsoleOutput(prev => prev + "\n> Generando C...\n");
-                const simplified = nodes.map(n => ({ type: n.type, ...(n.data.params || {}) }));
-                const res = await window.eel.api_translate('to_struct', simplified, null, 'struct')();
-                if (res) {
-                    setConsoleOutput(prev => prev + "[OK] Estructura generada. Guardando...\n");
-                    await window.eel.api_file_save(JSON.stringify(res, null, 2), "pipeline_export.json");
-                }
-            };
-
-            const saveProject = async () => {
-                const name = prompt("Nombre del proyecto:");
-                if(name) {
-                    await window.eel.api_save_project({ nodes, edges }, name)();
-                    setConsoleOutput(prev => prev + `> Proyecto ${name} guardado.\n`);
-                }
-            };
-
-            const onDragStart = (event, type) => {
-                event.dataTransfer.setData('application/reactflow', type);
+            // Callback para el SidebarBtn
+            const onDragStart = (event, nodeType, label) => {
+                event.dataTransfer.setData('application/reactflow/type', nodeType);
+                event.dataTransfer.setData('application/reactflow/label', label);
                 event.dataTransfer.effectAllowed = 'move';
             };
 
+            const deleteSelected = () => {
+                const selected = nodes.filter(n => n.selected);
+                if (!selected.length) return;
+                setNodes(nds => nds.filter(n => !n.selected));
+                setEdges(eds => eds.filter(e => !selected.some(n => n.id === e.source || n.id === e.target)));
+                addLog(`Eliminados ${selected.length} nodos`, 'warn');
+            };
+
+            const translateToCode = async () => {
+                const blocks = serializeNodesLinear(nodes, edges, mode);
+                try {
+                    if(window.eel) {
+                        const res = await window.eel.api_translate("to_python", blocks)();
+                        if (res.result) { setPythonCode(res.result); addLog("Traducción OK", 'success'); }
+                        else addLog(`Error: ${res.error}`, 'error');
+                    }
+                } catch (e) { addLog(`Error: ${e}`, 'error'); }
+            };
+
+            const runPipeline = async () => {
+                addLog("Ejecutando...", 'warn');
+                const blocks = serializeNodesLinear(nodes, edges, mode);
+                try {
+                    if (window.eel) {
+                        const res = await window.eel.api_execute(blocks)();
+                        if (res.success) {
+                            addLog("Finalizado.", 'success');
+                            if (mode === 'ml') setSimulationStatus({ active: true, status: 'success' });
+                            if(res.results) res.results.forEach(r => {
+                                if(r.result?.status === 'predicted') addLog(`Salida: ${JSON.stringify(r.result.preds)}`, 'success');
+                                if(r.result?.status === 'evaluated') addLog(`Métricas: ${JSON.stringify(r.result.result)}`, 'info');
+                            });
+                            if(res.output) addLog(res.output, 'output');
+                        } else {
+                            if (mode === 'ml') setSimulationStatus({ active: false, status: 'error' });
+                            addLog(`Error: ${res.error}`, 'error');
+                        }
+                    }
+                } catch (e) { addLog(`Error: ${e}`, 'error'); }
+            };
+
+            const exportToC = async () => {
+                const mn = nodes.filter(n => n.type.includes('ml_train'));
+                if(!mn.length) { addLog("Sin modelos", 'error'); return; }
+                addLog(`Exportando '${mn[0].data.model_name}'...`, 'info');
+            };
+
+            const checkMemory = async () => {
+                const mn = nodes.find(n => n.type.includes('train'));
+                if (!mn) { addLog("Sin modelos", 'warn'); return; }
+                try {
+                    const res = await window.eel.api_estimate_memory_desktop(mn.data.model_name)();
+                    if(res.error) addLog(res.error, 'error');
+                    else { setMemoryStats(res); addLog(`Flash: ${res.flash_percent}%`, 'success'); }
+                } catch(e) { addLog(e, 'error'); }
+            };
+
+            const saveProject = async () => {
+                const name = prompt("Nombre:"); if(!name) return;
+                const data = { blocks: nodes.map(n=>({...n, type:n.type})), edges, mode };
+                try { await window.eel.api_save_project(data, name)(); addLog("Guardado", 'success'); } catch(e) { addLog(e, 'error'); }
+            };
+
             return (
-                <div className="h-full flex flex-col">
-                    {/* TOP BAR */}
-                    <div className="h-10 bg-vscode-activity flex items-center justify-between px-4 border-b border-vscode-border">
-                        <div className="flex items-center gap-3">
-                            <button onClick={saveProject} className="text-gray-400 hover:text-white" title="Guardar Proyecto"><Icons.Save size={16}/></button>
-                            <button onClick={onGoHome} className="text-gray-400 hover:text-white" title="Cerrar"><Icons.X size={16}/></button>
-                            <div className="h-4 w-px bg-gray-600 mx-2"></div>
-                            
-                            {/* SELECTOR DE MODO (TUTORIAL vs ML) */}
-                            <select 
-                                value={toolboxMode} 
-                                onChange={(e) => setToolboxMode(e.target.value)}
-                                className="bg-vscode-bg text-xs text-white border border-vscode-border rounded px-2 py-1 outline-none"
-                            >
-                                <option value="ml">Modo: ML Pipeline</option>
-                                <option value="python">Modo: Python Fundamentos</option>
-                            </select>
-
-                            <div className="h-4 w-px bg-gray-600 mx-2"></div>
-
-                            {/* SELECTOR DE LAYOUT (TABS vs SPLIT) */}
-                            <button 
-                                onClick={() => setLayoutMode(layoutMode === 'tabs' ? 'split' : 'tabs')} 
-                                className="text-gray-300 hover:text-white flex items-center gap-2 text-xs"
-                                title={layoutMode === 'tabs' ? "Cambiar a Vista Dividida" : "Cambiar a Pestañas"}
-                            >
-                                {layoutMode === 'tabs' ? <Icons.LayoutSplit size={14}/> : <Icons.LayoutTab size={14}/>}
-                                <span>{layoutMode === 'tabs' ? 'Split View' : 'Tabs View'}</span>
-                            </button>
+                <div className="flex h-full flex-col">
+                    <div className="h-14 bg-gray-900 border-b border-gray-700 flex items-center px-4 justify-between shrink-0">
+                        <div className="flex items-center gap-4">
+                            <button onClick={onBack} className="text-gray-400 hover:text-white flex items-center gap-1 text-sm font-bold"><ArrowLeft size={16}/> Inicio</button>
+                            <div className="h-6 w-px bg-gray-700"></div>
+                            <div className="flex bg-gray-800 rounded p-1">
+                                <button onClick={() => setActiveTab('forest')} className={`px-3 py-1 rounded text-xs font-medium ${activeTab==='forest'?'bg-gray-600 text-white':'text-gray-400'}`}>Bosque</button>
+                                {mode==='ml' && <button onClick={() => setActiveTab('simulation')} className={`px-3 py-1 rounded text-xs font-medium ${activeTab==='simulation'?'bg-gray-600 text-white':'text-gray-400'}`}>Simulación</button>}
+                                <button onClick={() => { setActiveTab('code'); translateToCode(); }} className={`px-3 py-1 rounded text-xs font-medium ${activeTab==='code'?'bg-gray-600 text-white':'text-gray-400'}`}>Python</button>
+                            </div>
                         </div>
-
                         <div className="flex gap-2">
-                            <button onClick={runCode} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs"><Icons.Play size={12}/> Ejecutar</button>
-                            <button onClick={exportToC} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs"><Icons.Export size={12}/> Exportar C</button>
+                            <button onClick={deleteSelected} className="p-2 rounded hover:bg-red-900/30 text-red-400"><Trash2 size={18}/></button>
+                            <button onClick={saveProject} className="p-2 rounded hover:bg-blue-900/30 text-blue-400"><Save size={18}/></button>
+                            <div className="h-6 w-px bg-gray-700 mx-1"></div>
+                            {mode==='ml' && (<><button onClick={checkMemory} className="bg-gray-800 px-3 py-1.5 rounded text-xs text-gray-300 border border-gray-700 hover:border-gray-600 flex gap-2"><Cpu size={14}/> Memoria</button><button onClick={exportToC} className="bg-gray-800 px-3 py-1.5 rounded text-xs text-gray-300 border border-gray-700 hover:border-gray-600 flex gap-2"><Cpu size={14}/> Exportar C</button></>)}
+                            <button onClick={runPipeline} className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded text-sm font-semibold flex items-center gap-2 shadow-lg"><Play size={16} fill="currentColor"/> Ejecutar</button>
                         </div>
                     </div>
-
-                    {/* TAB BAR (Solo visible en modo Tabs) */}
-                    {layoutMode === 'tabs' && (
-                        <div className="bg-vscode-bg flex border-b border-vscode-border">
-                            <div 
-                                className={`tab-btn ${activeTab === 'visual' ? 'active' : 'inactive'}`}
-                                onClick={() => setActiveTab('visual')}
-                            >
-                                <Icons.Blocks size={14} color={activeTab === 'visual' ? '#4ec9b0' : 'currentColor'} /> Diseño Visual (Bosque)
-                            </div>
-                            <div 
-                                className={`tab-btn ${activeTab === 'code' ? 'active' : 'inactive'}`}
-                                onClick={() => setActiveTab('code')}
-                            >
-                                <Icons.Code size={14} color={activeTab === 'code' ? '#ce9178' : 'currentColor'} /> Editor de Código
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="flex-1 flex overflow-hidden relative">
-                        {/* SIDEBAR (Siempre visible, contenido dinámico) */}
-                        <div className="w-56 bg-vscode-sidebar border-r border-vscode-border flex flex-col z-10">
-                            <div className="p-2 text-xs font-bold text-gray-400 uppercase bg-vscode-activity border-b border-vscode-border">
-                                {toolboxMode === 'ml' ? 'ML Toolbox' : 'Python Básico'}
-                            </div>
+                    <div className="flex-1 flex overflow-hidden">
+                        <div className="w-64 bg-gray-900 border-r border-gray-700 flex flex-col shrink-0">
+                            <div className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-800">{mode==='ml'?'Machine Learning':'Python'}</div>
                             <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                                {toolboxMode === 'ml' ? (
-                                    <>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-data flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'ml_dataset')}><Icons.Database size={14}/> Dataset</div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-logic flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'ml_split_block')}><Icons.Split size={14}/> Split Data</div>
-                                        <div className="h-px bg-gray-700 my-1"></div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-model flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'ml_train_dt')}><Icons.Tree size={14}/> Decision Tree</div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-model flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'ml_train_rf')}><Icons.Tree size={14}/> Random Forest</div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-logic flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'ml_train_svm')}><Icons.Target size={14}/> SVM (Mini)</div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-logic flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'ml_train_linear')}><Icons.Activity size={14}/> Linear Model</div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-nn flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'ml_train_nn')}><Icons.Brain size={14}/> Neural Net</div>
-                                        <div className="h-px bg-gray-700 my-1"></div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-eval flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'ml_predict')}><Icons.Play size={14}/> Predecir</div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-eval flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'ml_eval')}><Icons.Activity size={14}/> Evaluar</div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className="text-xs text-gray-500 px-1 mb-2">Fundamentos</div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-py flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'assign')}><Icons.Code size={14}/> Asignar Var</div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-py flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'print')}><Icons.Terminal size={14}/> Imprimir (Print)</div>
-                                        <div className="h-px bg-gray-700 my-1"></div>
-                                        <div className="text-xs text-gray-500 px-1 mb-2">Control de Flujo</div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-logic flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'if')}><Icons.GitBranch size={14}/> Condicional (If)</div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-logic flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'for_range')}><Icons.Refresh size={14}/> Bucle (For)</div>
-                                        <div className="p-2 bg-vscode-activity rounded cursor-grab border-l-2 border-node-model flex gap-2 text-sm text-gray-300" draggable onDragStart={(e) => onDragStart(e, 'function')}><Icons.Code size={14}/> Función (Def)</div>
-                                    </>
-                                )}
+                                {mode==='ml' ? (<>
+                                    <SidebarBtn label="Dataset" icon={Database} color="text-blue-400" nodeType="ml_dataset" onDragStart={onDragStart} />
+                                    <div className="my-2 border-t border-gray-800"></div>
+                                    <SidebarBtn label="Decision Tree" icon={GitBranch} color="text-emerald-400" nodeType="ml_train_dt" onDragStart={onDragStart} />
+                                    <SidebarBtn label="Random Forest" icon={Layers} color="text-emerald-500" nodeType="ml_train_rf" onDragStart={onDragStart} />
+                                    <SidebarBtn label="KNN" icon={Users} color="text-purple-400" nodeType="ml_train_knn" onDragStart={onDragStart} />
+                                    <SidebarBtn label="SVM" icon={Split} color="text-pink-400" nodeType="ml_train_svm" onDragStart={onDragStart} />
+                                    <SidebarBtn label="Linear Reg" icon={ArrowRight} color="text-cyan-400" nodeType="ml_train_linear" onDragStart={onDragStart} />
+                                    <SidebarBtn label="Neural Net" icon={Brain} color="text-indigo-400" nodeType="ml_train_nn" onDragStart={onDragStart} />
+                                    <div className="my-2 border-t border-gray-800"></div>
+                                    <SidebarBtn label="Ejecutar" icon={PlayCircle} color="text-red-400" nodeType="ml_predict" onDragStart={onDragStart} />
+                                </>) : (<>
+                                    <SidebarBtn label="Variable" icon={Variable} color="text-yellow-400" nodeType="py_var" onDragStart={onDragStart} />
+                                    <SidebarBtn label="Input" icon={Keyboard} color="text-slate-400" nodeType="py_input" onDragStart={onDragStart} />
+                                    <SidebarBtn label="Print" icon={Terminal} color="text-gray-400" nodeType="py_print" onDragStart={onDragStart} />
+                                    <div className="my-2 border-t border-gray-800"></div>
+                                    <SidebarBtn label="If" icon={Split} color="text-orange-400" nodeType="py_if" onDragStart={onDragStart} />
+                                    <SidebarBtn label="For" icon={Repeat} color="text-orange-500" nodeType="py_loop" onDragStart={onDragStart} />
+                                    <SidebarBtn label="While" icon={RefreshCw} color="text-orange-600" nodeType="py_while" onDragStart={onDragStart} />
+                                    <SidebarBtn label="Control" icon={XCircle} color="text-red-500" nodeType="py_control" onDragStart={onDragStart} />
+                                    <div className="my-2 border-t border-gray-800"></div>
+                                    <SidebarBtn label="Math" icon={Calculator} color="text-teal-400" nodeType="py_math" onDragStart={onDragStart} />
+                                    <SidebarBtn label="Compare" icon={CheckSquare} color="text-cyan-400" nodeType="py_compare" onDragStart={onDragStart} />
+                                    <SidebarBtn label="Function" icon={FunctionSquare} color="text-violet-400" nodeType="py_func" onDragStart={onDragStart} />
+                                    <SidebarBtn label="Return" icon={ArrowLeft} color="text-rose-400" nodeType="py_return" onDragStart={onDragStart} />
+                                    <div className="my-2 border-t border-gray-800"></div>
+                                    <SidebarBtn label="Class" icon={Box} color="text-indigo-400" nodeType="py_class" onDragStart={onDragStart} />
+                                    <SidebarBtn label="Import" icon={Package} color="text-sky-400" nodeType="py_import" onDragStart={onDragStart} />
+                                    <SidebarBtn label="Try/Except" icon={AlertTriangle} color="text-amber-400" nodeType="py_try" onDragStart={onDragStart} />
+                                </>)}
                             </div>
+                            {mode==='ml' && memoryStats && <div className="p-3 bg-gray-800 border-t border-gray-700 text-[10px] font-mono"><div>Flash: {memoryStats.flash_percent}%</div></div>}
                         </div>
-
-                        {/* WORKSPACE AREA */}
-                        <div className="flex-1 flex overflow-hidden">
-                            {/* CANVAS VISUAL (Mostrado si estamos en modo split o si la tab activa es visual) */}
-                            <div className={`flex-1 relative border-r border-vscode-border ${layoutMode === 'tabs' && activeTab !== 'visual' ? 'hidden' : ''}`}
-                                onDrop={(e) => {
-                                    e.preventDefault();
-                                    const type = e.dataTransfer.getData('application/reactflow');
-                                    if(!type) return;
-                                    const pos = { x: e.clientX - 250, y: e.clientY - 100 };
-                                    setNodes(nds => nds.concat({ id: Date.now().toString(), type, position: pos, data: { params: {} } }));
-                                }} 
-                                onDragOver={e => e.preventDefault()}>
-                                <ReactFlowProvider>
-                                    <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes} fitView className="bg-vscode-bg">
-                                        <Background color="#333" gap={20}/>
-                                        <Controls style={{buttonBg:'#333', buttonColor:'#fff'}}/>
-                                    </ReactFlow>
-                                </ReactFlowProvider>
-                            </div>
-
-                            {/* CODE EDITOR (Mostrado si estamos en modo split o si la tab activa es código) */}
-                            <div className={`${layoutMode === 'tabs' ? 'w-full' : 'w-1/3 min-w-[300px]'} bg-vscode-editor flex flex-col ${layoutMode === 'tabs' && activeTab !== 'code' ? 'hidden' : ''}`}>
-                                <div className="h-8 bg-vscode-activity flex items-center justify-between px-2 border-b border-vscode-border">
-                                    <span className="text-xs text-gray-400 flex gap-2 items-center"><Icons.Code size={12}/> {toolboxMode === 'ml' ? 'pipeline_generated.py' : 'script_tutorial.py'}</span>
-                                    <button onClick={syncVisual} className="text-xs bg-vscode-accent text-white px-2 rounded flex items-center gap-1"><Icons.Refresh size={10}/> Sync Visual</button>
-                                </div>
-                                <textarea 
-                                    className="code-editor-area flex-1 p-4 w-full h-full outline-none text-sm"
-                                    value={pythonCode}
-                                    onChange={(e) => { setPythonCode(e.target.value); setIsSyncing(true); }}
-                                    spellCheck="false"
-                                ></textarea>
-                                <div className="h-1/3 bg-vscode-terminal border-t border-vscode-border flex flex-col">
-                                    <div className="px-2 py-1 text-xs font-bold text-gray-500 uppercase border-b border-vscode-border">Terminal</div>
-                                    <div className="flex-1 p-2 font-mono text-xs text-gray-300 overflow-y-auto whitespace-pre-wrap">{consoleOutput}</div>
-                                </div>
-                            </div>
+                        <div className="flex-1 relative bg-[#1e1e1e]" ref={reactFlowWrapper}>
+                            {activeTab==='forest' ? <div className="h-full w-full"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onInit={setReactFlowInstance} onDrop={onDrop} onDragOver={onDragOver} nodeTypes={nodeTypes} fitView snapToGrid snapGrid={[15,15]}><Background color="#333" gap={20} /><Controls className="bg-gray-800 border-gray-700 fill-white text-white" /></ReactFlow></div> :
+                             activeTab==='simulation' && mode==='ml' ? <SimulationView active={simulationStatus.active} status={simulationStatus.status} /> :
+                             <div className="h-full w-full relative"><textarea className="w-full h-full bg-[#1e1e1e] text-green-400 p-4 font-mono text-sm resize-none focus:outline-none" value={pythonCode} readOnly spellCheck="false"></textarea></div>}
                         </div>
                     </div>
-                    
-                    {/* STATUS BAR */}
-                    <div className="h-6 bg-vscode-status text-white flex items-center justify-between px-3 text-xs">
-                        <div>EduBot Core: {isSyncing ? "Sincronizando..." : "Listo"} | Modo: {layoutMode.toUpperCase()} | Toolbox: {toolboxMode.toUpperCase()}</div>
-                        <div>Python 3.11</div>
-                    </div>
+                    <div className="h-40 border-t border-gray-700 flex flex-col bg-black shrink-0"><div className="bg-gray-800 text-[10px] uppercase font-bold tracking-wider px-3 py-1 text-gray-400 border-b border-gray-700 flex justify-between"><span>Terminal</span><button onClick={()=>setLogs([])} className="hover:text-white">Clear</button></div><TerminalLog logs={logs} /></div>
                 </div>
             );
         };
 
-        const App = () => {
-            const [currentView, setCurrentView] = useState('welcome');
-            const [loadedProject, setLoadedProject] = useState(null);
-
-            const handleNew = () => { setLoadedProject(null); setCurrentView('editor'); };
-            const handleOpen = async () => {
-                const name = prompt("Nombre proyecto:");
-                if(!name) return;
-                try {
-                    const data = await window.eel.api_load_project(name)();
-                    if(data) { setLoadedProject(data); setCurrentView('editor'); }
-                } catch(e) { alert("Error al cargar"); }
-            };
-
+        const Editor = ({ mode, onBack, initialNodes, initialEdges }) => {
             return (
-                <>
-                    {currentView === 'welcome' ? 
-                        <WelcomeScreen onNewProject={handleNew} onOpenProject={handleOpen} /> : 
-                        <EditorInterface onGoHome={() => setCurrentView('welcome')} initialData={loadedProject} />
-                    }
-                </>
+                <ReactFlowProvider>
+                    <EditorContent mode={mode} onBack={onBack} initialNodes={initialNodes} initialEdges={initialEdges} />
+                </ReactFlowProvider>
             );
         };
 
+        // --- 5. COMPONENTE PRINCIPAL ---
+        const Main = () => {
+            const [view, setView] = useState('welcome');
+            const [mode, setMode] = useState('ml');
+            const [initialData, setInitialData] = useState(null);
+            const handleNewProject = (selectedMode) => { setMode(selectedMode); setInitialData(null); setView('editor'); };
+            const handleOpenProject = async () => {
+                const name = prompt("Nombre proyecto:"); if(!name) return;
+                try { const data = await window.eel.api_load_project(name)(); if(data) { setMode(data.mode||'ml'); setInitialData(data); setView('editor'); } } catch(e) { console.error(e); }
+            };
+            return view === 'welcome' ? <WelcomeScreen onNew={handleNewProject} onOpen={handleOpenProject} /> : <Editor mode={mode} onBack={()=>setView('welcome')} initialNodes={initialData?.blocks} initialEdges={initialData?.edges} />;
+        };
+
         const root = createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(<Main />);
     </script>
 </body>
 </html>

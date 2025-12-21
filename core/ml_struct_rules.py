@@ -1,13 +1,19 @@
 """
-Normalizadores / reglas para bloques ML.
-Cada función toma un bloque (dict desde frontend) y devuelve una estructura
-({'action': ..., ...}) estandarizada que el ml_adapter entienda.
+core/ml_struct_rules.py
+-----------------------
+Reglas de normalización de estructuras ML para EduBot.
+Gestiona la conversión bidireccional entre Bloques Visuales (Frontend) y Estructuras de Ejecución (Backend).
+
+ACTUALIZADO:
+- Soporte completo para MiniML Engine v1.0.2 (KNN, SVM, Linear, NN Avanzada).
+- Reconstrucción inteligente de topologías neuronales para visualización.
+- Extracción automática de bias/intercept desde pesos crudos.
 """
 
 from typing import Dict, Any
 
-# ============================================================
-# BLOQUES -> ESTRUCTURA
+# ----------------------------------------------------------------
+# BLOQUES VISUALES -> ESTRUCTURA INTERNA (Normalización)
 
 def ml_dataset_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
     """Normaliza block 'ml_dataset' a estructura estándar."""
@@ -42,6 +48,45 @@ def ml_train_rf_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
         'seed': None if block.get('seed') in (None, 'None', '') else int(block.get('seed')),
     }
 
+def ml_train_knn_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        'action': 'train_knn',
+        'dataset': block.get('dataset', 'data'),
+        'model_name': block.get('model_name', 'knn_model'),
+        'k': int(block.get('k', 3)),
+        'task': block.get('task', 'classification') 
+    }
+
+def ml_train_svm_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        'action': 'train_svm',
+        'dataset': block.get('dataset', 'data'),
+        'model_name': block.get('model_name', 'svm_model'),
+        'learning_rate': float(block.get('learning_rate', 0.001)),
+        'lambda_param': float(block.get('lambda_param', 0.01)),
+        'epochs': int(block.get('epochs', 1000)), # El runtime usa 'n_iters', el adaptador lo mapeará
+    }
+
+def ml_train_linear_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        'action': 'train_linear',
+        'dataset': block.get('dataset', 'data'),
+        'model_name': block.get('model_name', 'linear_model'),
+        'learning_rate': float(block.get('learning_rate', 0.01)),
+        'epochs': int(block.get('epochs', 1000)),
+    }
+
+def ml_train_nn_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        'action': 'train_nn',
+        'dataset': block.get('dataset', 'data'),
+        'model_name': block.get('model_name', 'nn_model'),
+        'hidden_size': int(block.get('hidden_size', 4)),
+        'epochs': int(block.get('epochs', 1000)),
+        'lr': float(block.get('lr', 0.01)),
+        'n_inputs': block.get('n_inputs') # Opcional, puede ser None (auto-detect)
+    }
+
 def ml_predict_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'action': 'predict',
@@ -59,7 +104,7 @@ def ml_eval_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 def ml_eval_ext_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
-    """Soporte extendido para métricas múltiples (accuracy, precision, recall, f1)."""
+    """Soporte extendido para métricas múltiples."""
     return {
         'action': 'eval_ext',
         'y_true': block.get('y_true', None),
@@ -68,21 +113,22 @@ def ml_eval_ext_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
         'output': block.get('output', 'results')
     }
 
-
-# ============================================================
-# REGISTRO Y CONVERSIÓN
-
+# Registro de convertidores
 BLOCK_TO_STRUCT = {
     'ml_dataset': ml_dataset_block_to_struct,
     'ml_train_dt': ml_train_dt_block_to_struct,
     'ml_train_rf': ml_train_rf_block_to_struct,
+    'ml_train_knn': ml_train_knn_block_to_struct,
+    'ml_train_svm': ml_train_svm_block_to_struct,
+    'ml_train_linear': ml_train_linear_block_to_struct,
+    'ml_train_nn': ml_train_nn_block_to_struct,
     'ml_predict': ml_predict_block_to_struct,
     'ml_eval': ml_eval_block_to_struct,
     'ml_eval_ext': ml_eval_ext_block_to_struct,
 }
 
 def block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
-    """Convierte un bloque visual a estructura ML normalizada."""
+    """Punto de entrada: Convierte un bloque visual a estructura ML normalizada."""
     t = block.get('type')
     if not t:
         return {'action': 'unsupported', 'raw': block}
@@ -94,37 +140,45 @@ def block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
             return {'action': 'error', 'error': str(e), 'raw': block}
     return {'action': 'unsupported', 'raw': block}
 
+
+# ----------------------------------------------------------------------
+# ESTRUCTURA INTERNA -> BLOQUES VISUALES (Traducción Inversa)
+
 MODEL_TYPE_MAP = {
     "decisiontree": "ml_decision_tree",
     "randomforest": "ml_random_forest",
     "svm": "ml_svm",
+    "minisvm": "ml_svm", # Alias para el nombre de clase real
     "linear": "ml_linear_model",
+    "minilinearmodel": "ml_linear_model", # Alias
     "neural": "ml_neural_network",
+    "minineuralnetwork": "ml_neural_network", # Alias
+    "knn": "ml_train_knn", # Para KNN usamos el bloque de entrenamiento como visualizador por ahora
+    "knearestneighbors": "ml_train_knn"
 }
 
 def detect_block_type_from_struct(struct: dict) -> str:
-    """
-    Detecta el tipo de bloque visual adecuado a partir de una estructura ML.
-    Si no encuentra coincidencias conocidas, retorna 'ml_model_generic'.
-    """
+    """Detecta el tipo de bloque visual a partir de metadata o nombre de clase."""
+    # Intentar detectar por campo 'type' explícito
     model_type = (struct.get("model_type") or struct.get("type") or "").lower()
+    
+    # Búsqueda difusa en el mapa
     for key, block_name in MODEL_TYPE_MAP.items():
         if key in model_type:
             return block_name
+            
     return "ml_model_generic"
 
-
-# ============================================================
-# ESTRUCTURA -> BLOQUES (CONVERSIÓN INVERSA)
-
 def struct_to_visual_block(struct: Dict[str, Any]) -> Dict[str, Any]:
-    """Convierte una estructura ML en bloque visual (para exportación inversa).
-    Soporta modelos MiniML, sklearn y genéricos, así como datasets y evaluadores.
+    """
+    Convierte una estructura ML (guardada o en runtime) en un bloque visual.
+    CORREGIDO: Maneja atributos reales de MiniML (weights, config) en lugar de imaginarios.
     """
     action = struct.get("action")
     block_type = detect_block_type_from_struct(struct)
 
-    # Dataset
+    # Bloques de Acción (Pipeline)
+    
     if action == "dataset":
         return {
             "type": "ml_dataset",
@@ -133,8 +187,6 @@ def struct_to_visual_block(struct: Dict[str, Any]) -> Dict[str, Any]:
             "data": struct.get("data"),
             "path": struct.get("path"),
         }
-
-    # Entrenamiento de Árbol de Decisión
     elif action == "train_dt":
         return {
             "type": "ml_train_dt",
@@ -144,8 +196,6 @@ def struct_to_visual_block(struct: Dict[str, Any]) -> Dict[str, Any]:
             "min_size": struct.get("min_size"),
             "n_features": struct.get("n_features"),
         }
-
-    # Entrenamiento de Bosque Aleatorio
     elif action == "train_rf":
         return {
             "type": "ml_train_rf",
@@ -158,8 +208,40 @@ def struct_to_visual_block(struct: Dict[str, Any]) -> Dict[str, Any]:
             "n_features": struct.get("n_features"),
             "seed": struct.get("seed"),
         }
-
-    # Predicción
+    elif action == "train_knn":
+        return {
+            "type": "ml_train_knn",
+            "dataset": struct.get("dataset"),
+            "model_name": struct.get("model_name"),
+            "k": struct.get("k", 3),
+            "task": struct.get("task", "classification"),
+        }
+    elif action == "train_svm":
+        return {
+            "type": "ml_train_svm",
+            "dataset": struct.get("dataset"),
+            "model_name": struct.get("model_name"),
+            "learning_rate": struct.get("learning_rate"),
+            "epochs": struct.get("epochs") or struct.get("n_iters"),
+            "lambda_param": struct.get("lambda_param")
+        }
+    elif action == "train_linear":
+        return {
+            "type": "ml_train_linear",
+            "dataset": struct.get("dataset"),
+            "model_name": struct.get("model_name"),
+            "learning_rate": struct.get("learning_rate"),
+            "epochs": struct.get("epochs")
+        }
+    elif action == "train_nn":
+        return {
+            "type": "ml_train_nn",
+            "dataset": struct.get("dataset"),
+            "model_name": struct.get("model_name"),
+            "hidden_size": struct.get("hidden_size"),
+            "epochs": struct.get("epochs"),
+            "lr": struct.get("lr")
+        }
     elif action == "predict":
         return {
             "type": "ml_predict",
@@ -167,8 +249,6 @@ def struct_to_visual_block(struct: Dict[str, Any]) -> Dict[str, Any]:
             "X": struct.get("X"),
             "output": struct.get("output"),
         }
-
-    # Evaluación simple
     elif action == "eval":
         return {
             "type": "ml_eval",
@@ -176,8 +256,6 @@ def struct_to_visual_block(struct: Dict[str, Any]) -> Dict[str, Any]:
             "y_pred": struct.get("y_pred"),
             "output": struct.get("output"),
         }
-
-    # Evaluación extendida
     elif action == "eval_ext":
         return {
             "type": "ml_eval_ext",
@@ -187,8 +265,10 @@ def struct_to_visual_block(struct: Dict[str, Any]) -> Dict[str, Any]:
             "output": struct.get("output"),
         }
 
-    # Bloque de modelo genérico 
-    elif block_type == "ml_model_generic":
+    # Bloques de Modelos Entrenados (Visualización)
+    
+    # Modelo Genérico (Fallback)
+    if block_type == "ml_model_generic":
         block = {
             "type": "ml_model_generic",
             "model_name": struct.get("model_name", "UnknownModel"),
@@ -196,80 +276,109 @@ def struct_to_visual_block(struct: Dict[str, Any]) -> Dict[str, Any]:
             "parameters": struct.get("parameters", {}),
             "raw": struct,
         }
-
-        # Si el modelo tiene marca temporal → incluir como metadato
         if "saved_at" in struct:
             block["metadata"] = {"trained_at": struct["saved_at"]}
-
         return block
 
-    # Bloques reconocidos (DecisionTree, RandomForest, etc.)
+    # Modelos Específicos
     elif block_type in MODEL_TYPE_MAP.values():
         block = {
             "type": block_type,
             "framework": struct.get("framework", "MiniML"),
             "parameters": struct.get("parameters", {}),
-            "raw": struct,
+            # "raw": struct, # Opcional, para debug
         }
 
+        # Metadata universal
         if "saved_at" in struct:
             block["metadata"] = {"trained_at": struct["saved_at"]}
 
+        # Lógica Específica por Modelo
+        
         if block_type == "ml_svm":
-                block["kernel"] = struct.get("kernel", "linear")
-                block["bias"] = struct.get("bias", 0.0)
+            # Extraer bias de los pesos si no existe explícitamente
+            weights = struct.get("weights", [])
+            bias = struct.get("bias", 0.0)
+            if not bias and weights and len(weights) > 0:
+                bias = weights[-1] # En MiniML, bias es el último peso
+            
+            block["kernel"] = struct.get("kernel", "linear")
+            block["bias"] = bias
+            block["epochs"] = struct.get("n_iters", 1000)
+
         elif block_type == "ml_linear_model":
-            block["intercept"] = struct.get("intercept", 0.0)
+            weights = struct.get("weights", [])
+            intercept = struct.get("intercept", 0.0)
+            # Intentar recuperar intercept de weights[-1] si no viene explícito
+            if not intercept and weights and len(weights) > 0:
+                intercept = weights[-1]
+                
+            block["intercept"] = intercept
+            block["epochs"] = struct.get("epochs", 1000)
+
         elif block_type == "ml_neural_network":
-            block["activation"] = struct.get("activation", "relu")
-            block["layers"] = struct.get("layers", [])
+            # Reconstruir topología visual desde config o inferencia
+            config = struct.get("config", {})
+            n_in = struct.get("n_inputs") or config.get("n_inputs", 1)
+            n_hid = struct.get("n_hidden") or config.get("n_hidden", 4)
+            n_out = struct.get("n_outputs") or config.get("n_outputs", 1)
+            
+            # El frontend espera 'layers' para dibujar la red
+            block["layers"] = [n_in, n_hid, n_out]
+            
+            # Activaciones
+            block["activation"] = struct.get("hidden_activation") or config.get("hidden_activation", "sigmoid")
+
+        elif block_type == "ml_train_knn":
+            block["k"] = struct.get("k", 3)
+            block["task"] = struct.get("task", "classification")
 
         return block
 
-    # Fallback de seguridad
-    else:
-        return {
-            "type": "ml_model_generic",
-            "framework": struct.get("framework", "unknown"),
-            "parameters": struct.get("parameters", {}),
-            "raw": struct,
-        }
+    # Fallback final
+    return {
+        "type": "ml_model_generic",
+        "raw": struct
+    }
 
 
-
-# ============================================================
-# VALIDADOR
+# -----------------------------------------------
+# VALIDADOR DE ESTRUCTURAS
 
 def validate_struct(struct: Dict[str, Any]) -> bool:
-    """Valida que la estructura ML contenga campos mínimos requeridos según su
-    tipo de acción o modelo.
-    Incluye soporte para modelos genéricos ('ml_model_generic') y estructuras
-    híbridas provenientes de MiniML o sklearn.
+    """
+    Valida que la estructura ML contenga campos mínimos requeridos.
+    ACTUALIZADO: Incluye todos los modelos soportados (SVM, Linear, NN, KNN).
     """
     required_fields = {
         'dataset': ['action', 'data'],
         'train_dt': ['action', 'dataset', 'model_name'],
         'train_rf': ['action', 'dataset', 'model_name'],
+        # Nuevos modelos
+        'train_knn': ['action', 'dataset', 'model_name', 'k'],
+        'train_svm': ['action', 'dataset', 'model_name'],
+        'train_linear': ['action', 'dataset', 'model_name'],
+        'train_nn': ['action', 'dataset', 'model_name'],
+        # Ejecución
         'predict': ['action', 'model', 'X'],
         'eval': ['action', 'y_true', 'y_pred'],
         'eval_ext': ['action', 'y_true', 'y_pred', 'metrics'],
     }
-    # Detección principal
+    
+    # Validación por Acción
     action = struct.get('action')
-    model_type = (struct.get('type') or '').lower()
-
-    # Estructura ML tradicional
     if action in required_fields:
         return all(field in struct for field in required_fields[action])
 
-    # Modelo genérico
+    # Validación por Tipo (Modelos ya entrenados/guardados)
+    model_type = (struct.get('type') or '').lower()
+    
+    # Modelos Genéricos o MiniML Serializados
     if model_type == 'ml_model_generic' or 'framework' in struct:
-        # Verifica existencia mínima de nombre o framework
-        return any(k in struct for k in ('framework', 'parameters', 'model_name', 'type'))
+        return True # Asumimos válido si tiene framework
 
-    # Estructuras sin action pero con árbol o bosque
-    if any(k in struct for k in ('root', 'trees')):
-        return True  # válido como modelo ML MiniML o sklearn
+    # Estructuras de Árbol (para compatibilidad legacy)
+    if any(k in struct for k in ('root', 'trees', 'weights', 'W1')):
+        return True
 
-    # Fallback
     return False

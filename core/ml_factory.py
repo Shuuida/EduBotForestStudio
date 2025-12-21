@@ -7,7 +7,7 @@ y facilitar la extensión (ej. futuros modelos GPU).
 """
 
 from typing import Any, Dict, Optional
-from . import ml_runtime
+from core import ml_runtime
 
 def create_model(model_type: str, params: Optional[Dict[str, Any]] = None) -> Any:
     """

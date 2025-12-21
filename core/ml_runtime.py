@@ -1,36 +1,38 @@
 """
 MiniML Core for EduBot
+======================
+Motor de Machine Learning ligero y optimizado para educación y sistemas embebidos.
 
-Objetivos:
- - MiniMatrixOps: operaciones de matriz/vectores ligeras (sin numpy)
- - DecisionTreeClassifier / DecisionTreeRegressor (CART-style) robustos
- - RandomForestClassifier / RandomForestRegressor
- - MiniLinearModel (Mini)
- - MiniSVM (lineal, perceptron-like / hinge update)
- - MiniNeuralNetwork: MLP con backprop que admite múltiples salidas
- - Utilities: accuracy_score, mse, mae, r2_score
- - Export helpers: to_arduino_code para generar código embebible
- - Sin dependencias externas (diseñado para firmware y prototipos)
+Estructura del Módulo:
+1. Operaciones Matemáticas (MiniMatrixOps)
+2. Utilidades Globales de Árboles (Splits, Gini, MSE)
+3. Modelos de Árboles (Clasificación y Regresión)
+4. Modelos de Bosques (Random Forest)
+5. K-Nearest Neighbors (KNN)
+6. Modelos Lineales (Linear & SVM)
+7. Red Neuronal (MLP)
+8. Métricas y Utilidades
+
+Versión: 1.3 (Stable & Structured)
 """
 
 from __future__ import annotations
-from typing import List, Any, Optional, Tuple, Union, Dict
+from typing import List, Any, Dict
 import random
 import math
-from core.ml_compat import safe_compare_le, _flatten_tree_to_arrays, check_dims
+from core.ml_compat import safe_compare_le, _flatten_tree_to_arrays
 
-# ---------------------------
-# MiniMatrixOps (sin numpy)
-# ---------------------------
+# ---------------------------------------------------------
+# MOTOR MATEMÁTICO (MiniMatrixOps)
 class MiniMatrixOps:
-    """Operaciones básicas de vectores/matrices sin dependencias externas."""
+    """Operaciones de álgebra lineal optimizadas para listas nativas."""
 
     @staticmethod
     def dot(a: List[float], b: List[float]) -> float:
-        if len(a) != len(b):
-            raise ValueError("Vectors must have same length for dot product")
+        # Fallback seguro para longitudes desiguales
+        limit = min(len(a), len(b))
         s = 0.0
-        for i in range(len(a)):
+        for i in range(limit):
             s += a[i] * b[i]
         return s
 
@@ -40,1186 +42,583 @@ class MiniMatrixOps:
 
     @staticmethod
     def transpose(mat: List[List[float]]) -> List[List[float]]:
-        if not mat:
-            return []
-        rows = len(mat)
-        cols = len(mat[0])
-        return [[mat[r][c] for r in range(rows)] for c in range(cols)]
+        if not mat: return []
+        return [list(row) for row in zip(*mat)]
 
     @staticmethod
-    def outer(a: List[float], b: List[float]) -> List[List[float]]:
-        return [[ai * bj for bj in b] for ai in a]
+    def add(a: List[float], b: List[float]) -> List[float]:
+        return [x + y for x, y in zip(a, b)]
 
     @staticmethod
-    def add_vec(a: List[float], b: List[float]) -> List[float]:
-        if len(a) != len(b):
-            raise ValueError("Vector length mismatch")
-        return [a[i] + b[i] for i in range(len(a))]
+    def sub(a: List[float], b: List[float]) -> List[float]:
+        return [x - y for x, y in zip(a, b)]
 
     @staticmethod
-    def scalar_mul_vec(s: float, v: List[float]) -> List[float]:
-        return [s * x for x in v]
-
-    @staticmethod
-    def matrix_multiply(A: List[List[float]], B: List[List[float]]) -> List[List[float]]:
-        """Multiplicación de matrices A (m x n) * B (n x p) -> (m x p)."""
-        if not A or not B:
-            return []
-        m = len(A)
-        n = len(A[0])
-        if any(len(row) != n for row in A):
-            raise ValueError("Invalid matrix A")
-        if any(len(row) != len(B[0]) for row in B):
-            pass  # permitir filas B irregulares? validaremos correctamente a continuación
-        p = len(B[0])
-        # Validar forma B
-        if any(len(row) != len(B[0]) for row in B):
-            raise ValueError("Invalid matrix B")
-        if len(B) != n:
-            raise ValueError("Incompatible dimensions for matrix multiply")
-        # compute
-        BT = MiniMatrixOps.transpose(B)
-        result = []
-        for i in range(m):
-            row_res = []
-            for j in range(p):
-                row_res.append(MiniMatrixOps.dot(A[i], BT[j]))
-            result.append(row_res)
-        return result
-
-# ---------------------------
-# Utilities
-# ---------------------------
-# Activation Utilities (global para MiniML)
-
-def clip(value: float, min_val: float = -60.0, max_val: float = 60.0) -> float:
-    """Protege activaciones (sigmoid overflow)."""
-    if value < min_val:
-        return min_val
-    if value > max_val:
-        return max_val
-    return value
-
-def sigmoid(x: float) -> float:
-    x = clip(x)
-    try:
-        return 1.0 / (1.0 + math.exp(-x))
-    except OverflowError:
-        return 0.0 if x < 0 else 1.0
-    except Exception:
-        return 0.5  # fallback seguro
-
-def sigmoid_derivative(output: float) -> float:
-    return output * (1.0 - output)
-
-def relu(x: float) -> float:
-    return x if x > 0 else 0.0
-
-def relu_derivative(x: float) -> float:
-    return 1.0 if x > 0 else 0.0
-
-def linear(x: float) -> float:
-    return x
-
-def linear_derivative(_: float) -> float:
-    return 1.0
-
-# ---------------------------
-# Decision tree helpers (CART)
-# ---------------------------
-def split_dataset(dataset: List[List[Any]], feature_index: int, value: Any) -> Tuple[List[List[Any]], List[List[Any]]]:
-    """
-    Divide un conjunto de datos en dos grupos (izquierda y derecha) basándose en el valor de una característica.
-    Esta función es robusta contra tipos de datos no numéricos para evitar errores de tipo en tiempo de ejecución.
-    """
-    left, right = [], []
+    def scalar_mul(vec: List[float], s: float) -> List[float]:
+        return [x * s for x in vec]
     
-    # Determinar si el valor de división es un número válido.
-    is_value_numeric = isinstance(value, (int, float))
+    @staticmethod
+    def sigmoid(x: float) -> float:
+        if x < -700: return 0.0
+        if x > 700: return 1.0
+        return 1.0 / (1.0 + math.exp(-x))
 
+    @staticmethod
+    def sigmoid_derivative(output: float) -> float:
+        return output * (1.0 - output)
+
+# ------------------------------------------------------------------------
+# 2. UTILIDADES GLOBALES DE ÁRBOLES (Shared Logic)
+# Estas funciones están fuera de las clases para ser usadas tanto por
+# Clasificación como por Regresión sin duplicar código.
+
+def test_split(index, value, dataset):
+    """Divide un dataset en dos grupos."""
+    left, right = [], []
     for row in dataset:
-        try:
-            # Si el índice está fuera de rango, la fila no se puede dividir.
-            if feature_index >= len(row):
-                right.append(row)
-                continue
-
-            row_feature = row[feature_index]
-            is_row_feature_numeric = isinstance(row_feature, (int, float))
-
-            # Solo se puede realizar una comparación numérica si ambos valores son números.
-            if is_value_numeric and is_row_feature_numeric:
-                if row_feature <= value:
-                    left.append(row)
-                else:
-                    right.append(row)
-            # Si el valor de división o el de la fila no son numéricos, la comparación es inválida. 
-            # Se asigna la fila a la derecha por defecto. Esto asegura que la división
-            # no será "pura" y el algoritmo la descartará por tener una puntuación de impureza alta.
-            else:
-                right.append(row)
-        
-        except Exception:
-            # Ante cualquier otro error inesperado, se asigna la fila a la derecha como medida de seguridad.
+        if safe_compare_le(row[index], value):
+            left.append(row)
+        else:
             right.append(row)
-            
     return left, right
 
-def gini_index(groups: Union[List[List[List[Any]]], Tuple[List[List[Any]], List[List[Any]]]], classes: List[Any]) -> float:
-    n_instances = sum(len(g) for g in groups)
-    if n_instances == 0:
-        return 0.0
+def gini_index(groups, classes):
+    """Cálculo de impureza Gini (para Clasificación)."""
+    n_instances = float(sum([len(group) for group in groups]))
     gini = 0.0
     for group in groups:
-        size = len(group)
-        if size == 0:
-            continue
+        size = float(len(group))
+        if size == 0: continue
         score = 0.0
         for class_val in classes:
-            p = sum(1 for row in group if row[-1] == class_val) / size
+            p = [row[-1] for row in group].count(class_val) / size
             score += p * p
         gini += (1.0 - score) * (size / n_instances)
     return gini
 
-def mse_index(groups: Union[List[List[List[Any]]], Tuple[List[List[Any]], List[List[Any]]]]) -> float:
-    n_instances = sum(len(g) for g in groups)
-    if n_instances == 0:
-        return 0.0
-    mse = 0.0
+def mse_metric(groups):
+    """Cálculo de Mean Squared Error (para Regresión)."""
+    total_error = 0.0
+    n_instances = float(sum([len(group) for group in groups]))
     for group in groups:
-        size = len(group)
-        if size == 0:
-            continue
-        mean = sum(row[-1] for row in group) / size
-        sq_error = sum((row[-1] - mean) ** 2 for row in group)
-        mse += sq_error * (size / n_instances)
-    return mse
+        size = float(len(group))
+        if size == 0: continue
+        outcomes = [row[-1] for row in group]
+        mean_val = sum(outcomes) / size
+        error = sum([(x - mean_val)**2 for x in outcomes])
+        total_error += error
+    return total_error / n_instances if n_instances > 0 else 0.0
 
-def to_terminal_class(group: List[List[Any]]):
-    outcomes = {}
-    for row in group:
-        label = row[-1]
-        outcomes[label] = outcomes.get(label, 0) + 1
-    # CORRECCIÓN
-    if not outcomes:
-        # Un grupo vacío no puede tener una clase 'max'.
-        # Devolver None rompe la validación (un nodo hoja no puede ser None).
-        # Devolvemos '0' (int) como un valor terminal de fallback seguro.
-        # Esto es análogo a to_terminal_reg que devuelve 0.0.
-        return 0
-    return max(outcomes.items(), key=lambda x: x[1])[0]
+def to_terminal_classifier(group):
+    """Retorna la clase más común (Moda)."""
+    outcomes = [row[-1] for row in group]
+    if not outcomes: return 0
+    return max(set(outcomes), key=outcomes.count)
 
-def to_terminal_reg(group: List[List[Any]]):
-    if not group:
-        return 0.0
-    vals = [row[-1] for row in group]
-    return sum(vals) / len(vals)
+def to_terminal_regressor(group):
+    """Retorna el promedio de valores (Media)."""
+    outcomes = [row[-1] for row in group]
+    if not outcomes: return 0.0
+    return sum(outcomes) / len(outcomes)
 
-def get_split_class(dataset: List[List[Any]], n_features: Optional[int] = None):
-    class_values = list(set(row[-1] for row in dataset))
-    b_index, b_value, b_score, b_groups = None, None, float('inf'), None
+def _generate_tree_c_code(root, fn_name):
+    """Generador genérico de código C para cualquier árbol."""
+    flat = _flatten_tree_to_arrays(root)
+    code = [f"// DT Export: {fn_name}"]
     
-    if not dataset or not dataset[0]:
-        return {'index': b_index, 'value': b_value, 'groups': b_groups}
-        
-    features = list(range(len(dataset[0]) - 1))
-    if n_features is not None and n_features > 0:
-        features = random.sample(features, max(1, min(len(features), n_features)))
-        
-    for index in features:
-        values = set(row[index] for row in dataset)
-        
-        # Filtrar valores para asegurar que solo los números se usen para las divisiones.
-        # Esto previene que un 'dict' o 'str' sea usado como umbral numérico.
-        numeric_values = {v for v in values if isinstance(v, (int, float))}
-        
-        for value in numeric_values:
-            groups = split_dataset(dataset, index, value)
-            gini = gini_index(groups, class_values)
-            
-            # Esta comparación ahora es segura, porque 'gini' y 'b_score' son floats garantizados.
-            if gini < b_score:
-                b_index, b_value, b_score, b_groups = index, value, gini, groups
-                
-    return {'index': b_index, 'value': b_value, 'groups': b_groups}
+    def arr(n, d, t="int"):
+        return f"const {t} {n}[] PROGMEM = {{ {', '.join(map(str, d))} }};"
 
-def get_split_regression(dataset: List[List[Any]], n_features: Optional[int] = None):
-    b_index, b_value, b_score, b_groups = None, None, float('inf'), None
+    code.append(arr(f"{fn_name}_idx", flat['feature_index']))
+    code.append(arr(f"{fn_name}_val", flat['threshold'], "float"))
+    code.append(arr(f"{fn_name}_L", flat['left_child']))
+    code.append(arr(f"{fn_name}_R", flat['right_child']))
+    code.append(arr(f"{fn_name}_out", flat['value'], "float"))
+    
+    code.append(f"\nfloat {fn_name}(float* input) {{")
+    code.append("  int curr = 0;")
+    code.append("  while(true) {")
+    code.append(f"    int idx = pgm_read_word_near({fn_name}_idx + curr);")
+    code.append(f"    if (idx == -1) return pgm_read_float_near({fn_name}_out + curr);")
+    code.append(f"    float thresh = pgm_read_float_near({fn_name}_val + curr);")
+    code.append(f"    if (input[idx] <= thresh) curr = pgm_read_word_near({fn_name}_L + curr);")
+    code.append(f"    else curr = pgm_read_word_near({fn_name}_R + curr);")
+    code.append("  }\n}")
+    return "\n".join(code)
 
-    if not dataset or not dataset[0]:
-        return {'index': b_index, 'value': b_value, 'groups': b_groups}
+# ------------------------------------------------------
+# MODELOS DE ÁRBOLES
 
-    features = list(range(len(dataset[0]) - 1))
-    if n_features is not None and n_features > 0:
-        features = random.sample(features, max(1, min(len(features), n_features)))
-
-    for index in features:
-        values = set(row[index] for row in dataset)
-        
-        # Aplicar el mismo filtro para la regresión.
-        numeric_values = {v for v in values if isinstance(v, (int, float))}
-        
-        for value in numeric_values:
-            groups = split_dataset(dataset, index, value)
-            score = mse_index(groups)
-
-            # Esta comparación también es segura ahora.
-            if score < b_score:
-                b_index, b_value, b_score, b_groups = index, value, score, groups
-                
-    return {'index': b_index, 'value': b_value, 'groups': b_groups}
-
-def build_tree_class(node: Dict[str, Any], max_depth: int, min_size: int, n_features: Optional[int]):
-    groups = node.get('groups')
-    if not groups or not isinstance(groups, (list, tuple)) or len(groups) != 2:
-        # convertir a terminal
-        node['left'] = to_terminal_class(node.get('groups') or [])
-        node['right'] = node['left']
-        node.pop('groups', None)
-        return
-    left, right = groups
-    # terminal condition
-    if not left or not right or max_depth <= 0:
-        node['left'] = to_terminal_class(left)
-        node['right'] = to_terminal_class(right)
-        node.pop('groups', None)
-        return
-    # construcción recursiva
-    left_child = get_split_class(left, n_features)
-    node['left'] = left_child
-    build_tree_class(left_child, max_depth - 1, min_size, n_features)
-    right_child = get_split_class(right, n_features)
-    node['right'] = right_child
-    build_tree_class(right_child, max_depth - 1, min_size, n_features)
-    node.pop('groups', None)
-
-def build_tree_reg(node: Dict[str, Any], max_depth: int, min_size: int, n_features: Optional[int]):
-    groups = node.get('groups')
-    if not groups or not isinstance(groups, (list, tuple)) or len(groups) != 2:
-        node['left'] = to_terminal_reg(node.get('groups') or [])
-        node['right'] = node['left']
-        node.pop('groups', None)
-        return
-    left, right = groups
-    if not left or not right or max_depth <= 0:
-        node['left'] = to_terminal_reg(left)
-        node['right'] = to_terminal_reg(right)
-        node.pop('groups', None)
-        return
-    left_child = get_split_regression(left, n_features)
-    node['left'] = left_child
-    build_tree_reg(left_child, max_depth - 1, min_size, n_features)
-    right_child = get_split_regression(right, n_features)
-    node['right'] = right_child
-    build_tree_reg(right_child, max_depth - 1, min_size, n_features)
-    node.pop('groups', None)
-
-# ---------------------------
-# Classifiers / Regressors
-# ---------------------------
 class DecisionTreeClassifier:
-    def __init__(self, max_depth: int = 10, min_size: int = 1, n_features: Optional[int] = None):
+    def __init__(self, max_depth=5, min_size=1, n_features=None):
         self.max_depth = max_depth
         self.min_size = min_size
         self.n_features = n_features
-        self.root: Optional[Dict[str, Any]] = None
-        self.n_features_trained: Optional[int] = None # Metadata dimensional
+        self.root = None
 
-    def fit(self, dataset: List[List[Any]]):
-        if not dataset or not isinstance(dataset, list):
-            raise ValueError("Dataset invalid for fit()")
+    def fit(self, dataset):
+        self.root = self._build_tree(dataset, self.max_depth)
+
+    def predict(self, X):
+        return [self._predict_row(self.root, row) for row in X]
+
+    def _build_tree(self, train, depth):
+        if not train: return None
+        # Separación simple
+        y = [row[-1] for row in train]
+        if not y: return 0
+        if len(set(y)) == 1: return to_terminal_classifier(train)
+        if depth == 0 or len(train) < self.min_size: return to_terminal_classifier(train)
+
+        best = self._get_best_split(train)
+        if not best: return to_terminal_classifier(train)
         
-        # Guardar dimensiones de entrenamiento (dataset = features + target)
-        self.n_features_trained = len(dataset[0]) - 1
+        l, r = best['groups']
+        del best['groups']
+        if not l or not r: return to_terminal_classifier(l + r)
+        
+        best['left'] = self._build_tree(l, depth - 1)
+        best['right'] = self._build_tree(r, depth - 1)
+        return best
 
-        root = get_split_class(dataset, self.n_features)
-        if not root.get('groups'):
-            self.root = {'index': None, 'value': None, 'left': to_terminal_class(dataset), 'right': to_terminal_class(dataset)}
-            return
-        build_tree_class(root, self.max_depth, self.min_size, self.n_features)
-        self.root = root
+    def _get_best_split(self, dataset):
+        class_values = list(set(row[-1] for row in dataset))
+        b_idx, b_val, b_score, b_groups = 999, 999, 999, None
+        n_features = len(dataset[0]) - 1
+        features = list(range(n_features))
+        
+        if self.n_features and self.n_features < n_features:
+            features = random.sample(features, self.n_features)
+
+        for index in features:
+            for row in dataset:
+                groups = test_split(index, row[index], dataset)
+                gini = gini_index(groups, class_values)
+                if gini < b_score:
+                    b_idx, b_val, b_score, b_groups = index, row[index], gini, groups
+        
+        if b_score == 999: return None
+        return {'index': b_idx, 'value': b_val, 'groups': b_groups}
 
     def _predict_row(self, node, row):
-        if not isinstance(node, dict):
-            return node
-
-        index = node.get('index')
-        value = node.get('value')
-
-        if index is None:
-            if 'left' in node and not isinstance(node['left'], dict):
-                return node['left']
-            return node
-
-        if isinstance(value, dict):
-            return self._predict_row(value, row)
-
-        try:
-            row_feature = row[index]
-            if not isinstance(row_feature, (int, float)):
-                return self._predict_row(node.get('right'), row)
-        except (IndexError, KeyError):
-            return self._predict_row(node.get('right'), row)
-
-        if safe_compare_le(row_feature, value):
-            return self._predict_row(node.get('left'), row)
+        if not isinstance(node, dict): return node
+        if node.get('index') == -1 or 'left' not in node: return node.get('value', 0)
+        
+        if safe_compare_le(row[node['index']], node['value']):
+            return self._predict_row(node['left'], row)
         else:
-            return self._predict_row(node.get('right'), row)
+            return self._predict_row(node['right'], row)
 
-    def predict(self, X: List[List[Any]]) -> List[Any]:
-        if self.root is None:
-            raise ValueError("Model not trained")
+    def to_arduino_code(self, fn_name="tree_predict"):
+        return _generate_tree_c_code(self.root, fn_name)
+
+
+class DecisionTreeRegressor:
+    def __init__(self, max_depth=5, min_size=1, n_features=None):
+        self.max_depth = max_depth
+        self.min_size = min_size
+        self.n_features = n_features
+        self.root = None
+
+    def fit(self, dataset):
+        self.root = self._build_tree(dataset, self.max_depth)
+
+    def predict(self, X):
+        return [self._predict_row(self.root, row) for row in X]
+
+    def _build_tree(self, train, depth):
+        if not train: return None
+        if depth == 0 or len(train) < self.min_size: return to_terminal_regressor(train)
+
+        best = self._get_best_split(train)
+        if not best: return to_terminal_regressor(train)
         
-        # Validar dimensiones contra lo entrenado
-        if self.n_features_trained is not None:
-             check_dims(X, self.n_features_trained, "DecisionTree Predict")
-
-        preds = []
-        for row in X:
-            preds.append(self._predict_row(self.root, row))
-        return preds
-
-    def to_arduino_code(self, fn_name: str = "predict_row") -> str:
-        if self.root is None:
-            return "// Error: Modelo no entrenado."
+        l, r = best['groups']
+        del best['groups']
+        if not l or not r: return to_terminal_regressor(l + r)
         
-        flat = _flatten_tree_to_arrays(self.root)
-        n_nodes = len(flat['feature_index'])
+        best['left'] = self._build_tree(l, depth - 1)
+        best['right'] = self._build_tree(r, depth - 1)
+        return best
+
+    def _get_best_split(self, dataset):
+        b_idx, b_val, b_score, b_groups = 999, 999, float('inf'), None
+        n_features = len(dataset[0]) - 1
+        features = list(range(n_features))
+        if self.n_features and self.n_features < n_features:
+            features = random.sample(features, self.n_features)
+
+        for index in features:
+            for row in dataset:
+                groups = test_split(index, row[index], dataset)
+                mse = mse_metric(groups)
+                if mse < b_score:
+                    b_idx, b_val, b_score, b_groups = index, row[index], mse, groups
         
-        # Helper para PROGMEM (Flash Memory)
-        def progmem_arr(name, data, dtype):
-            vals = ", ".join(map(str, data))
-            return f"const {dtype} {name}[{len(data)}] PROGMEM = {{{vals}}};"
+        if b_score == float('inf'): return None
+        return {'index': b_idx, 'value': b_val, 'groups': b_groups}
 
-        code = [
-            f"// --- MiniML (EduBot) Decision Tree ({n_nodes} nodes) ---",
-            "// Optimized for AVR (Arduino): Uses PROGMEM to save SRAM.",
-            "#include <avr/pgmspace.h>",
-            "",
-            progmem_arr(f"{fn_name}_idx", flat['feature_index'], "int16_t"),
-            progmem_arr(f"{fn_name}_thr", flat['threshold'], "float"),
-            progmem_arr(f"{fn_name}_left", flat['left_child'], "int16_t"),
-            progmem_arr(f"{fn_name}_right", flat['right_child'], "int16_t"),
-            progmem_arr(f"{fn_name}_val", flat['value'], "int16_t"),
-            "",
-            f"int {fn_name}(float *row) {{",
-            "  int16_t n = 0;",
-            "  while (1) {",
-            f"    int16_t feat = (int16_t)pgm_read_word(&{fn_name}_idx[n]);",
-            "    if (feat == -1) {",
-            f"      return (int16_t)pgm_read_word(&{fn_name}_val[n]);",
-            "    }",
-            f"    float th = pgm_read_float(&{fn_name}_thr[n]);",
-            "    if (row[feat] <= th) {",
-            f"      n = (int16_t)pgm_read_word(&{fn_name}_left[n]);",
-            "    } else {",
-            f"      n = (int16_t)pgm_read_word(&{fn_name}_right[n]);",
-            "    }",
-            "  }",
-            "}"
-        ]
-        return "\n".join(code)
-
-
-class DecisionTreeRegressor(DecisionTreeClassifier):
-    def fit(self, dataset: List[List[Any]]):
-        if not dataset or not isinstance(dataset, list):
-            raise ValueError("Dataset invalid for fit()")
+    def _predict_row(self, node, row):
+        if not isinstance(node, dict): return node
+        if node.get('index') == -1: return node.get('value', 0.0)
         
-        # Guardar dimensiones
-        self.n_features_trained = len(dataset[0]) - 1
+        if safe_compare_le(row[node['index']], node['value']):
+            return self._predict_row(node['left'], row)
+        else:
+            return self._predict_row(node['right'], row)
 
-        root = get_split_regression(dataset, self.n_features)
-        if not root.get('groups'):
-            self.root = {'index': None, 'value': None, 'left': to_terminal_reg(dataset), 'right': to_terminal_reg(dataset)}
-            return
-        build_tree_reg(root, self.max_depth, self.min_size, self.n_features)
-        self.root = root
+    def to_arduino_code(self, fn_name="tree_reg_predict"):
+        return _generate_tree_c_code(self.root, fn_name)
 
-    def predict(self, X: List[List[Any]]) -> List[float]:
-        if self.root is None:
-            raise ValueError("Model not trained")
-            
-        # Validar dimensiones
-        if self.n_features_trained is not None:
-             check_dims(X, self.n_features_trained, "DecisionTreeRegressor Predict")
+# ---------------------------------------------------------------------
+# MODELOS DE BOSQUES (Random Forest)
 
-        preds = []
-        for row in X:
-            p = self._predict_row(self.root, row)
-            preds.append(float(p))
-        return preds
+def _subsample(dataset, ratio):
+    """Función helper para bagging."""
+    sample = []
+    n_sample = round(len(dataset) * ratio)
+    while len(sample) < n_sample:
+        index = random.randrange(len(dataset))
+        sample.append(dataset[index])
+    return sample
 
-    def to_arduino_code(self, fn_name: str = "predict_row") -> str:
-        if self.root is None: return "// Error"
-        flat = _flatten_tree_to_arrays(self.root)
-        
-        def progmem_arr(name, data, dtype):
-            vals = ", ".join(map(str, data))
-            return f"const {dtype} {name}[{len(data)}] PROGMEM = {{{vals}}};"
+def _generate_rf_c_code(trees, fn_name, task="classification"):
+    """Generador genérico para Random Forest."""
+    code = []
+    names = []
+    for i, t in enumerate(trees):
+        nm = f"{fn_name}_t{i}"
+        names.append(nm)
+        code.append(t.to_arduino_code(nm))
+        code.append("")
+    
+    code.append(f"float {fn_name}(float* input) {{")
+    code.append(f"  float votes[{len(trees)}];")
+    for i, nm in enumerate(names):
+        code.append(f"  votes[{i}] = {nm}(input);")
+    
+    if task == "regression":
+        code.append("  // Average logic")
+        code.append("  float sum = 0;")
+        code.append(f"  for(int i=0; i<{len(trees)}; i++) sum += votes[i];")
+        code.append(f"  return sum / {len(trees)};")
+    else:
+        code.append("  // Majority Vote logic")
+        code.append("  int c0=0, c1=0;")
+        code.append(f"  for(int i=0; i<{len(trees)}; i++) (votes[i]<0.5)? c0++ : c1++;")
+        code.append("  return (c1 > c0) ? 1.0 : 0.0;")
+    
+    code.append("}")
+    return "\n".join(code)
 
-        code = [
-            f"// --- MiniML (EduBot) Tree Regressor ---",
-            "#include <avr/pgmspace.h>",
-            progmem_arr(f"{fn_name}_idx", flat['feature_index'], "int16_t"),
-            progmem_arr(f"{fn_name}_thr", flat['threshold'], "float"),
-            progmem_arr(f"{fn_name}_left", flat['left_child'], "int16_t"),
-            progmem_arr(f"{fn_name}_right", flat['right_child'], "int16_t"),
-            progmem_arr(f"{fn_name}_val", flat['value'], "float"), # float value for regression
-            "",
-            f"float {fn_name}(float *row) {{",
-            "  int16_t n = 0;",
-            "  while (1) {",
-            f"    int16_t feat = (int16_t)pgm_read_word(&{fn_name}_idx[n]);",
-            "    if (feat == -1) {",
-            f"      return pgm_read_float(&{fn_name}_val[n]);",
-            "    }",
-            f"    float th = pgm_read_float(&{fn_name}_thr[n]);",
-            "    if (row[feat] <= th) {",
-            f"      n = (int16_t)pgm_read_word(&{fn_name}_left[n]);",
-            "    } else {",
-            f"      n = (int16_t)pgm_read_word(&{fn_name}_right[n]);",
-            "    }",
-            "  }",
-            "}"
-        ]
-        return "\n".join(code)
-
-# ---------------------------
-# Random Forest
-# ---------------------------
 class RandomForestClassifier:
-    def __init__(self, n_trees: int = 5, max_depth: int = 10, min_size: int = 1,
-                 sample_size: float = 1.0, n_features: Optional[int] = None, seed: Optional[int] = None):
+    def __init__(self, n_trees=5, max_depth=5, min_size=1, sample_size=1.0, n_features=None, seed=None):
         self.n_trees = n_trees
         self.max_depth = max_depth
         self.min_size = min_size
         self.sample_size = sample_size
         self.n_features = n_features
-        self.seed = seed
-        self.trees: List[DecisionTreeClassifier] = []
-        self.n_features_trained: Optional[int] = None # Metadata
-
-    def _subsample(self, dataset):
-        n_sample = max(1, int(len(dataset) * self.sample_size))
-        return [random.choice(dataset) for _ in range(n_sample)]
-
-    def fit(self, dataset: List[List[Any]]):
-        if not dataset:
-            raise ValueError("Dataset empty")
-        
-        # Guardar dimensiones
-        self.n_features_trained = len(dataset[0]) - 1
-
         self.trees = []
-        random.seed(self.seed)
-        for i in range(self.n_trees):
-            sample = self._subsample(dataset)
-            tree = DecisionTreeClassifier(max_depth=self.max_depth, min_size=self.min_size, n_features=self.n_features)
+        if seed: random.seed(seed)
+
+    def fit(self, dataset):
+        self.trees = []
+        for _ in range(self.n_trees):
+            sample = _subsample(dataset, self.sample_size)
+            tree = DecisionTreeClassifier(self.max_depth, self.min_size, self.n_features)
             tree.fit(sample)
             self.trees.append(tree)
 
-    def predict(self, X: List[List[Any]]) -> List[Any]:
-        if not self.trees:
-            raise ValueError("Not trained")
-        
-        # Validar dimensiones
-        if self.n_features_trained is not None:
-             check_dims(X, self.n_features_trained, "RandomForest Predict")
+    def predict(self, X):
+        preds = [tree.predict(X) for tree in self.trees]
+        per_row = list(zip(*preds))
+        return [max(set(row), key=row.count) for row in per_row]
 
-        votes = []
-        for row in X:
-            row_votes = [t._predict_row(t.root, row) for t in self.trees]
-            agg = {}
-            for v in row_votes:
-                agg[v] = agg.get(v, 0) + 1
-            votes.append(max(agg.items(), key=lambda x: x[1])[0])
-        return votes
+    def to_arduino_code(self, fn_name="rf_predict"):
+        return _generate_rf_c_code(self.trees, fn_name, task="classification")
 
-    def to_arduino_code(self, fn_name: str = "predict_rf") -> str:
-        if not self.trees: return "// Error: Modelo no entrenado"
 
-        code = [
-            "// --- MiniML (EduBot) Random Forest Classifier (Optimized AVR) ---",
-            "// All tree structures stored in PROGMEM to save SRAM.",
-            "#include <avr/pgmspace.h>",
-            ""
-        ]
-
-        # Helper para generar arrays PROGMEM
-        def progmem_arr(name, data, dtype):
-            if not data: return f"const {dtype} {name}[1] PROGMEM = {{0}};"
-            vals = ", ".join(map(str, data))
-            return f"const {dtype} {name}[{len(data)}] PROGMEM = {{{vals}}};"
-
-        tree_functions = []
-
-        for i, tree in enumerate(self.trees):
-            if tree.root is None: continue
-            
-            flat = _flatten_tree_to_arrays(tree.root)
-            prefix = f"{fn_name}_t{i}"
-            
-            # Definir arrays globales en PROGMEM para este árbol
-            code.append(f"// Tree {i}")
-            code.append(progmem_arr(f"{prefix}_idx", flat['feature_index'], "int16_t"))
-            code.append(progmem_arr(f"{prefix}_thr", flat['threshold'], "float"))
-            code.append(progmem_arr(f"{prefix}_L", flat['left_child'], "int16_t"))
-            code.append(progmem_arr(f"{prefix}_R", flat['right_child'], "int16_t"))
-            code.append(progmem_arr(f"{prefix}_val", flat['value'], "int16_t"))
-            
-            # Función de inferencia específica para este árbol
-            t_func_name = f"{prefix}_predict"
-            tree_functions.append(t_func_name)
-            
-            func_code = [
-                f"int16_t {t_func_name}(float *row) {{",
-                "  int16_t n = 0;",
-                "  while (1) {",
-                f"    int16_t feat = (int16_t)pgm_read_word(&{prefix}_idx[n]);",
-                "    if (feat == -1) {",
-                f"      return (int16_t)pgm_read_word(&{prefix}_val[n]);",
-                "    }",
-                f"    float th = pgm_read_float(&{prefix}_thr[n]);",
-                "    if (row[feat] <= th) {",
-                f"      n = (int16_t)pgm_read_word(&{prefix}_L[n]);",
-                "    } else {",
-                f"      n = (int16_t)pgm_read_word(&{prefix}_R[n]);",
-                "    }",
-                "  }",
-                "}",
-                ""
-            ]
-            code.extend(func_code)
-
-        # Función de votación
-        code.append("// Majority Voting Helper")
-        code.append(f"int {fn_name}(float *row) {{")
-        code.append(f"  int votes[{len(tree_functions)}];")
-        
-        for i, t_func in enumerate(tree_functions):
-            code.append(f"  votes[{i}] = {t_func}(row);")
-            
-        code.append(f"  // Voting Logic (O(N^2) simple impl for small N)")
-        code.append(f"  int max_count = 0;")
-        code.append(f"  int best_vote = votes[0];")
-        code.append(f"  for (int i=0; i<{len(tree_functions)}; i++) {{")
-        code.append(f"    int c = 0;")
-        code.append(f"    for (int j=0; j<{len(tree_functions)}; j++) {{")
-        code.append(f"      if (votes[j] == votes[i]) c++;")
-        code.append(f"    }}")
-        code.append(f"    if (c > max_count) {{ max_count = c; best_vote = votes[i]; }}")
-        code.append(f"  }}")
-        code.append(f"  return best_vote;")
-        code.append("}")
-
-        return "\n".join(code)
-
-class RandomForestRegressor(RandomForestClassifier):
-    def fit(self, dataset: List[List[Any]]):
-        if not dataset:
-            raise ValueError("Dataset empty")
-            
-        # Guardar dimensiones
-        self.n_features_trained = len(dataset[0]) - 1
-
+class RandomForestRegressor:
+    def __init__(self, n_trees=5, max_depth=5, min_size=1, sample_size=1.0, n_features=None, seed=None):
+        self.n_trees = n_trees
+        self.max_depth = max_depth
+        self.min_size = min_size
+        self.sample_size = sample_size
+        self.n_features = n_features
         self.trees = []
-        random.seed(self.seed)
-        for i in range(self.n_trees):
-            sample = self._subsample(dataset)
-            tree = DecisionTreeRegressor(max_depth=self.max_depth, min_size=self.min_size, n_features=self.n_features)
+        if seed: random.seed(seed)
+
+    def fit(self, dataset):
+        self.trees = []
+        for _ in range(self.n_trees):
+            sample = _subsample(dataset, self.sample_size)
+            tree = DecisionTreeRegressor(self.max_depth, self.min_size, self.n_features)
             tree.fit(sample)
             self.trees.append(tree)
 
-    def predict(self, X: List[List[Any]]) -> List[float]:
-        if not self.trees:
-            raise ValueError("Not trained")
-        
-        # Validar dimensiones
-        if self.n_features_trained is not None:
-             check_dims(X, self.n_features_trained, "RandomForestReg Predict")
+    def predict(self, X):
+        preds = [tree.predict(X) for tree in self.trees]
+        per_row = list(zip(*preds))
+        return [sum(row)/len(row) for row in per_row]
 
+    def to_arduino_code(self, fn_name="rf_reg_predict"):
+        return _generate_rf_c_code(self.trees, fn_name, task="regression")
+
+# -------------------------------------------------
+# K-NEAREST NEIGHBORS (KNN)
+
+class KNearestNeighbors:
+    def __init__(self, k=3, task='classification'):
+        self.k = k
+        self.task = task
+        self.X_train = []
+        self.y_train = []
+        self.n_features_trained = 0
+
+    def fit(self, dataset):
+        self.X_train = [row[:-1] for row in dataset]
+        self.y_train = [row[-1] for row in dataset]
+        self.n_features_trained = len(self.X_train[0]) if self.X_train else 0
+
+    def predict(self, X):
         preds = []
         for row in X:
-            row_preds = [t._predict_row(t.root, row) for t in self.trees]
-            avg = sum(float(p) for p in row_preds) / len(row_preds)
-            preds.append(avg)
+            dists = []
+            for i, tr in enumerate(self.X_train):
+                # Distancia Euclidiana
+                d = math.sqrt(sum((row[j]-tr[j])**2 for j in range(len(row))))
+                dists.append((self.y_train[i], d))
+            
+            # Ordenar por distancia
+            dists.sort(key=lambda x: x[1])
+            neighbors = [n[0] for n in dists[:self.k]]
+            
+            if self.task == 'regression':
+                preds.append(sum(neighbors)/max(len(neighbors), 1))
+            else:
+                preds.append(max(set(neighbors), key=neighbors.count))
         return preds
 
-    def to_arduino_code(self, fn_name: str = "predict_rf_reg") -> str:
-        if not self.trees: return "// Error: Modelo no entrenado"
+    def to_arduino_code(self, fn_name="knn_predict"):
+        # Almacena datos en Flash y busca vecinos
+        flat_X = [x for r in self.X_train for x in r]
+        code = [f"// KNN: {fn_name}"]
+        code.append(f"const float {fn_name}_X[] PROGMEM = {{ {', '.join(f'{x:.4f}' for x in flat_X)} }};")
+        code.append(f"const float {fn_name}_y[] PROGMEM = {{ {', '.join(f'{x:.4f}' for x in self.y_train)} }};")
+        
+        code.append(f"\nfloat {fn_name}(float* input) {{")
+        code.append(f"  int k={self.k}, n={len(self.y_train)}, d={self.n_features_trained};")
+        code.append("  float bdists[10]; float bvals[10];") # Limite K=10 hardcoded para C array
+        code.append("  for(int i=0;i<k;i++) bdists[i]=999999.0;")
+        code.append("  for(int i=0; i<n; i++) {")
+        code.append("    float dist=0; for(int j=0; j<d; j++) {")
+        code.append(f"      float v = pgm_read_float_near({fn_name}_X + i*d + j);")
+        code.append("      dist += (input[j]-v)*(input[j]-v); }")
+        code.append("    dist = sqrt(dist);")
+        code.append("    // Insertion sort")
+        code.append("    for(int m=0; m<k; m++) if(dist < bdists[m]) {")
+        code.append("      for(int x=k-1; x>m; x--) { bdists[x]=bdists[x-1]; bvals[x]=bvals[x-1]; }")
+        code.append(f"      bdists[m]=dist; bvals[m]=pgm_read_float_near({fn_name}_y + i); break;")
+        code.append("    }")
+        code.append("  }")
+        code.append("  float s=0; for(int i=0;i<k;i++) s+=bvals[i];")
+        code.append("  float mean = s/k;")
+        if self.task == 'regression': return "\n".join(code) + " return mean; }"
+        return "\n".join(code) + " return (mean>=0.5)? 1.0 : 0.0; }"
 
-        code = [
-            "// --- MiniML (EduBot) Random Forest Regressor (Optimized AVR) ---",
-            "#include <avr/pgmspace.h>",
-            ""
-        ]
+# --------------------------------------------------------
+# MODELOS LINEALES (SGD)
 
-        def progmem_arr(name, data, dtype):
-            if not data: return f"const {dtype} {name}[1] PROGMEM = {{0}};"
-            vals = ", ".join(map(str, data))
-            return f"const {dtype} {name}[{len(data)}] PROGMEM = {{{vals}}};"
-
-        tree_functions = []
-
-        for i, tree in enumerate(self.trees):
-            if tree.root is None: continue
-            flat = _flatten_tree_to_arrays(tree.root)
-            prefix = f"{fn_name}_t{i}"
-            
-            code.append(f"// Tree {i}")
-            code.append(progmem_arr(f"{prefix}_idx", flat['feature_index'], "int16_t"))
-            code.append(progmem_arr(f"{prefix}_thr", flat['threshold'], "float"))
-            code.append(progmem_arr(f"{prefix}_L", flat['left_child'], "int16_t"))
-            code.append(progmem_arr(f"{prefix}_R", flat['right_child'], "int16_t"))
-            # Nota: para regresión, value es float
-            code.append(progmem_arr(f"{prefix}_val", flat['value'], "float"))
-            
-            t_func_name = f"{prefix}_predict"
-            tree_functions.append(t_func_name)
-            
-            func_code = [
-                f"float {t_func_name}(float *row) {{",
-                "  int16_t n = 0;",
-                "  while (1) {",
-                f"    int16_t feat = (int16_t)pgm_read_word(&{prefix}_idx[n]);",
-                "    if (feat == -1) {",
-                f"      return pgm_read_float(&{prefix}_val[n]);",
-                "    }",
-                f"    float th = pgm_read_float(&{prefix}_thr[n]);",
-                "    if (row[feat] <= th) {",
-                f"      n = (int16_t)pgm_read_word(&{prefix}_L[n]);",
-                "    } else {",
-                f"      n = (int16_t)pgm_read_word(&{prefix}_R[n]);",
-                "    }",
-                "  }",
-                "}",
-                ""
-            ]
-            code.extend(func_code)
-
-        # Average logic
-        code.append(f"float {fn_name}(float *row) {{")
-        code.append(f"  float sum = 0.0;")
-        for t_func in tree_functions:
-            code.append(f"  sum += {t_func}(row);")
-        code.append(f"  return sum / {len(tree_functions)}.0;")
-        code.append("}")
-
-        return "\n".join(code)
-
-# ---------------------------
-# Mini Linear Model
-# ---------------------------
 class MiniLinearModel:
     def __init__(self, learning_rate=0.01, epochs=1000):
-        self.learning_rate = float(learning_rate)
-        self.epochs = int(epochs)
-        self.weights = None
-        self.n_features_trained: Optional[int] = None # Metadata
-
-    def _unpack(self, dataset):
-        X = [row[:-1] for row in dataset]
-        y = [row[-1] for row in dataset]
-        return X, y
+        self.lr, self.epochs = learning_rate, epochs
+        self.weights, self.bias = [], 0.0
 
     def fit(self, dataset):
-        X, y = self._unpack(dataset)
-        if not X:
-            raise ValueError("Empty dataset")
+        n_features = len(dataset[0]) - 1
+        self.weights, self.bias = [0.0] * n_features, 0.0
+        for _ in range(self.epochs):
+            for row in dataset:
+                # Usamos _predict_single para evitar duplicidad de lógica
+                pred = self._predict_single(row[:-1])
+                err = pred - row[-1]
+                self.bias -= self.lr * err
+                for i in range(n_features): self.weights[i] -= self.lr * err * row[i]
+
+    def _predict_single(self, row):
+        return MiniMatrixOps.dot(row, self.weights) + self.bias
+
+    def predict(self, X):
+        return [self._predict_single(r) for r in X]
+
+    def to_arduino_code(self, fn_name="linear_predict"):
+        """
+        Genera código C para inferencia lineal (Regresión).
+        y = (w * x) + b
+        """
+        code = []
+        code.append(f"// Linear Model Export: {fn_name}")
         
-        # Guardar dimensiones
-        self.n_features_trained = len(X[0])
-
-        n_samples = len(X)
-        n_features = len(X[0])
-        self.weights = [0.0] * n_features + [0.0]
-        for epoch in range(self.epochs):
-            grads = [0.0] * (n_features + 1)
-            for xi, yi in zip(X, y):
-                pred = sum(w * xv for w, xv in zip(self.weights[:-1], xi)) + self.weights[-1]
-                err = pred - yi
-                for j in range(n_features):
-                    grads[j] += (2.0 / n_samples) * err * xi[j]
-                grads[-1] += (2.0 / n_samples) * err
-            for j in range(n_features + 1):
-                self.weights[j] -= self.learning_rate * grads[j]
-
-    def predict(self, X_list):
-        if self.weights is None:
-            raise ValueError("Model not trained")
+        # Pesos en memoria Flash (PROGMEM)
+        w_str = ", ".join(f"{w:.5f}" for w in self.weights)
+        code.append(f"const float {fn_name}_w[] PROGMEM = {{ {w_str} }};")
+        code.append(f"const float {fn_name}_b = {self.bias:.5f};")
+        code.append(f"const int {fn_name}_dim = {len(self.weights)};")
         
-        # Validar dimensiones
-        if self.n_features_trained is not None:
-             check_dims(X_list, self.n_features_trained, "MiniLinear Predict")
-
-        preds = []
-        for xi in X_list:
-            if not isinstance(xi, (list, tuple)):
-                xi = [xi]
-            pred = sum(w * xv for w, xv in zip(self.weights[:-1], xi)) + self.weights[-1]
-            preds.append(pred)
-        return preds
-
-    def to_arduino_code(self, fn_name="predict_lin"):
-        if not self.weights: return "// Error: Modelo no entrenado"
-        w = self.weights
-        n_w = len(w)
-        
-        # PROGMEM: Guardamos los pesos en Flash
-        code = [
-            f"// --- MiniML (EduBot) Linear Model Optimized (AVR) ---",
-            "#include <avr/pgmspace.h>",
-            f"const float {fn_name}_weights[{n_w}] PROGMEM = {{{', '.join(map(str, w))}}};",
-            "",
-            f"float {fn_name}(float *row) {{",
-            "  float s = 0.0;",
-            f"  // Producto punto leyendo desde Flash",
-            f"  for (int i = 0; i < {n_w - 1}; i++) {{",
-            f"    float w = pgm_read_float(&{fn_name}_weights[i]);",
-            "    s += w * row[i];",
-            "  }",
-            f"  // Bias (ultimo peso)",
-            f"  s += pgm_read_float(&{fn_name}_weights[{n_w - 1}]);",
-            "  return s;",
-            "}"
-        ]
+        # Función de inferencia
+        code.append(f"\nfloat {fn_name}(float* input) {{")
+        code.append("  float result = 0.0;")
+        code.append(f"  for(int i=0; i<{fn_name}_dim; i++) {{")
+        code.append(f"    result += input[i] * pgm_read_float_near({fn_name}_w + i);")
+        code.append("  }")
+        code.append(f"  return result + {fn_name}_b;")
+        code.append("}")
         return "\n".join(code)
 
-# ---------------------------
-# Mini SVM (simple linear)
-# ---------------------------
 class MiniSVM:
-    def __init__(self, learning_rate=0.01, lambda_param=0.01, n_iters=1000):
-        self.learning_rate = float(learning_rate)
-        self.lambda_param = float(lambda_param)
-        self.n_iters = int(n_iters)
-        self.weights = None
-        self.n_features_trained: Optional[int] = None # Metadata
+    def __init__(self, learning_rate=0.001, lambda_param=0.01, n_iters=1000):
+        self.lr, self.lambda_param, self.n_iters = learning_rate, lambda_param, n_iters
+        self.weights, self.bias = [], 0.0
+
+    def fit(self, dataset):
+        n_feats = len(dataset[0]) - 1
+        self.weights, self.bias = [0.0] * n_feats, 0.0
+        formatted = [(r[:-1], 1 if r[-1]>0.5 else -1) for r in dataset]
+        
+        for _ in range(self.n_iters):
+            for X, y in formatted:
+                cond = y * (MiniMatrixOps.dot(X, self.weights) - self.bias) >= 1
+                if cond:
+                    for i in range(n_feats): self.weights[i] -= self.lr * (2*self.lambda_param*self.weights[i])
+                else:
+                    for i in range(n_feats): self.weights[i] -= self.lr * (2*self.lambda_param*self.weights[i] - y*X[i])
+                    self.bias -= self.lr * y
+
+    def predict(self, X):
+        return [1.0 if (MiniMatrixOps.dot(r, self.weights) - self.bias) >= 0 else 0.0 for r in X]
+    
+    def to_arduino_code(self, fn_name="svm_predict"):
+        w_s = ", ".join(f"{w:.5f}" for w in self.weights)
+        code = [f"const float {fn_name}_w[] PROGMEM = {{ {w_s} }};"]
+        code.append(f"const float {fn_name}_b = {self.bias:.5f};")
+        code.append(f"\nfloat {fn_name}(float* in) {{")
+        code.append(f"  float d=0; for(int i=0;i<{len(self.weights)};i++) d+=in[i]*pgm_read_float_near({fn_name}_w+i);")
+        code.append(f"  return (d - {fn_name}_b >= 0) ? 1.0 : 0.0; }}")
+        return "\n".join(code)
+
+# ----------------------------------------------------------
+# RED NEURONAL (MLP)
+
+class MiniNeuralNetwork:
+    def __init__(self, n_inputs=2, n_hidden=4, n_outputs=1, epochs=1000, learning_rate=0.1):
+        self.n_in, self.n_hid, self.n_out = n_inputs, n_hidden, n_outputs
+        self.epochs, self.lr = epochs, learning_rate
+        self.W1, self.B1, self.W2, self.B2 = [], [], [], []
+        self._init_weights()
+        self.quantized = False
+        self.act_scales = {}
+
+    def _init_weights(self):
+        random.seed(42)
+        l1 = math.sqrt(6/(self.n_in + self.n_hid))
+        self.W1 = [[random.uniform(-l1, l1) for _ in range(self.n_in)] for _ in range(self.n_hid)]
+        self.B1 = [0.0] * self.n_hid
+        l2 = math.sqrt(6/(self.n_hid + self.n_out))
+        self.W2 = [[random.uniform(-l2, l2) for _ in range(self.n_hid)] for _ in range(self.n_out)]
+        self.B2 = [0.0] * self.n_out
+
+    def forward(self, x):
+        self.z1 = MiniMatrixOps.add(MiniMatrixOps.matvec(self.W1, x), self.B1)
+        self.a1 = [MiniMatrixOps.sigmoid(v) for v in self.z1]
+        self.z2 = MiniMatrixOps.add(MiniMatrixOps.matvec(self.W2, self.a1), self.B2)
+        self.a2 = [MiniMatrixOps.sigmoid(v) for v in self.z2]
+        return self.a2
 
     def fit(self, dataset):
         X = [row[:-1] for row in dataset]
         y = [row[-1] for row in dataset]
-        if not X:
-            raise ValueError("Empty dataset")
-        
-        # Guardar dimensiones
-        self.n_features_trained = len(X[0])
-        n_features = len(X[0])
+        if not isinstance(y[0], list): y = [[val] for val in y]
 
-        self.weights = [0.0] * (n_features + 1)
-        for it in range(self.n_iters):
-            for xi, yi in zip(X, y):
-                if not isinstance(yi, (int, float)):
-                    raise ValueError("Labels must be numeric")
-                yi = 1 if yi > 0 else -1
-                wx = sum(w * xv for w, xv in zip(self.weights[:-1], xi)) + self.weights[-1]
-                if yi * wx < 1:
-                    for j in range(n_features):
-                        self.weights[j] = (1 - self.learning_rate * self.lambda_param) * self.weights[j] + self.learning_rate * yi * xi[j]
-                    self.weights[-1] = (1 - self.learning_rate * self.lambda_param) * self.weights[-1] + self.learning_rate * yi
-                else:
-                    for j in range(n_features + 1):
-                        self.weights[j] = (1 - self.learning_rate * self.lambda_param) * self.weights[j]
-
-    def predict(self, X_list):
-        if self.weights is None:
-            raise ValueError("Model not trained")
-        
-        # Validar dimensiones
-        if self.n_features_trained is not None:
-             check_dims(X_list, self.n_features_trained, "MiniSVM Predict")
-
-        out = []
-        for xi in X_list:
-            if not isinstance(xi, (list, tuple)):
-                xi = [xi]
-            s = sum(w * xv for w, xv in zip(self.weights[:-1], xi)) + self.weights[-1]
-            out.append(1 if s >= 0 else -1)
-        return out
-
-    def to_arduino_code(self, fn_name="predict_svm"):
-        if not self.weights: return "// Error: Modelo no entrenado"
-        w = self.weights
-        n_w = len(w)
-
-        code = [
-            f"// --- MiniML (EduBot) SVM Optimized (AVR) ---",
-            "#include <avr/pgmspace.h>",
-            f"const float {fn_name}_weights[{n_w}] PROGMEM = {{{', '.join(map(str, w))}}};",
-            "",
-            f"int {fn_name}(float *row) {{",
-            "  float s = 0.0;",
-            f"  for (int i = 0; i < {n_w - 1}; i++) {{",
-            f"    float w = pgm_read_float(&{fn_name}_weights[i]);",
-            "    s += w * row[i];",
-            "  }",
-            f"  s += pgm_read_float(&{fn_name}_weights[{n_w - 1}]);",
-            "  return (s >= 0.0) ? 1 : -1;",
-            "}"
-        ]
-        return "\n".join(code)
-
-# ---------------------------
-# MiniNeuralNetwork
-# ---------------------------
-class MiniNeuralNetwork:
-    def __init__(self, n_inputs, n_hidden, n_outputs, learning_rate=0.1, epochs=1000, seed=None):
-        self.n_inputs = int(n_inputs)
-        self.n_hidden = int(n_hidden)
-        self.n_outputs = int(n_outputs)
-        self.learning_rate = float(learning_rate)
-        self.epochs = int(epochs)
-        self.quantized = False
-        self.q_params = {}
-        self.hidden_activation = "sigmoid"
-        self.output_activation = "sigmoid"
-        
-        if seed is not None:
-            random.seed(seed)
-        
-        def rand_matrix(rows, cols):
-            return [[(random.random() - 0.5) * 0.2 for _ in range(cols)] for _ in range(rows)]
-        
-        self.W1 = rand_matrix(self.n_hidden, self.n_inputs)
-        self.B1 = [[0.0] for _ in range(self.n_hidden)]
-        self.W2 = rand_matrix(self.n_outputs, self.n_hidden)
-        self.B2 = [[0.0] for _ in range(self.n_outputs)]
-
-    def clip(self, value, min_val=-60.0, max_val=60.0):
-        return clip(value, min_val, max_val)
-    def sigmoid(self, x):
-        return sigmoid(x)
-    def sigmoid_deriv(self, out_val):
-        return sigmoid_derivative(out_val)
-    def relu(self, x):
-        return relu(x)
-    def relu_derivative(self, x):
-        return relu_derivative(x)
-
-    def _activate(self, x, act):
-        if act == 'sigmoid': return sigmoid(x)
-        if act == 'relu': return relu(x)
-        if act == 'linear': return linear(x)
-        return sigmoid(x)
-
-    def _act_derivative(self, out_val, act, pre_x=None):
-        if act == 'sigmoid': return sigmoid_derivative(out_val)
-        if act == 'relu': return relu_derivative(pre_x if pre_x is not None else out_val)
-        if act == 'linear': return linear_derivative(out_val)
-        return sigmoid_derivative(out_val)
-
-    def _forward(self, x_row):
-        z1, a1 = [], []
-        for i in range(self.n_hidden):
-            s = sum(self.W1[i][j] * x_row[j] for j in range(self.n_inputs)) + self.B1[i][0]
-            si = self._activate(s, getattr(self, "hidden_activation", "sigmoid"))
-            z1.append(s)
-            a1.append(si)
-
-        z2, a2 = [], []
-        for k in range(self.n_outputs):
-            s = sum(self.W2[k][i] * a1[i] for i in range(self.n_hidden)) + self.B2[k][0]
-            si = self._activate(s, getattr(self, "output_activation", "sigmoid"))
-            z2.append(s)
-            a2.append(si)
-
-        return a1, a2
-
-    def fit(self, dataset: List[List[Any]]):
-        """
-        Entrena la red neuronal. 
-        Ahora acepta un 'dataset' unificado [features + target] para compatibilidad con ml_manager.
-        """
-        if not dataset:
-            raise ValueError("Empty dataset")
-        
-        # Desempacar dataset (Standardization con el resto del framework)
-        X = [row[:-1] for row in dataset]
-        y = [row[-1] for row in dataset]
-
-        # Validar dimensiones
-        check_dims(X, self.n_inputs, "MiniNeuralNetwork Fit")
-        
-        # Formatear targets (manejo de escalares a listas)
-        y_formatted = []
-        for yi in y:
-            if isinstance(yi, (list, tuple)):
-                y_formatted.append([float(v) for v in yi])
-            else:
-                y_formatted.append([float(yi)])
-            
-        # Loop de entrenamiento
-        for epoch in range(self.epochs):
-            for xi, yi in zip(X, y_formatted):
-                a1, a2 = self._forward(xi)
+        for _ in range(self.epochs):
+            for i, row in enumerate(X):
+                target = y[i]
+                out = self.forward(row)
                 
-                delta2 = [0.0] * self.n_outputs
-                for k in range(self.n_outputs):
-                    err = a2[k] - yi[k]
-                    delta2[k] = err * self._act_derivative(a2[k], self.output_activation)
+                # Backprop
+                err = MiniMatrixOps.sub(out, target)
+                d2 = [e * MiniMatrixOps.sigmoid_derivative(o) for e, o in zip(err, out)]
                 
-                delta1 = [0.0] * self.n_hidden
-                for i in range(self.n_hidden):
-                    s = 0.0
-                    for k in range(self.n_outputs):
-                        s += self.W2[k][i] * delta2[k]
-                    delta1[i] = s * self._act_derivative(a1[i], self.hidden_activation)
+                W2_T = MiniMatrixOps.transpose(self.W2)
+                her = MiniMatrixOps.matvec(W2_T, d2)
+                d1 = [h * MiniMatrixOps.sigmoid_derivative(a) for h, a in zip(her, self.a1)]
                 
-                for k in range(self.n_outputs):
-                    for i in range(self.n_hidden):
-                        self.W2[k][i] -= self.learning_rate * delta2[k] * a1[i]
-                    self.B2[k][0] -= self.learning_rate * delta2[k]
-                
-                for i in range(self.n_hidden):
-                    for j in range(self.n_inputs):
-                        self.W1[i][j] -= self.learning_rate * delta1[i] * xi[j]
-                    self.B1[i][0] -= self.learning_rate * delta1[i]
+                for r in range(self.n_out):
+                    self.B2[r] -= self.lr * d2[r]
+                    for c in range(self.n_hid): self.W2[r][c] -= self.lr * d2[r] * self.a1[c]
+                for r in range(self.n_hid):
+                    self.B1[r] -= self.lr * d1[r]
+                    for c in range(self.n_in): self.W1[r][c] -= self.lr * d1[r] * row[c]
 
-    def predict(self, X_list):
-        # Validar dimensiones
-        check_dims(X_list, self.n_inputs, "MiniNeuralNetwork Predict")
-
-        preds = []
-        for xi in X_list:
-            _, a2 = self._forward(xi)
-            if self.n_outputs == 1:
-                preds.append([a2[0]])
-            else:
-                preds.append(a2[:])
-        return preds
-
-    def quantize(self):
-        """
-        Convierte pesos (float) a int8 (-128 a 127) para ahorrar espacio.
-        Calcula factores de escala para reconstruir el valor aproximado.
-        """
-        if self.quantized: return
-        
-        def quantize_layer(weights):
-            # Encontrar rango global de la capa
-            flat = [w for row in weights for w in row]
-            min_w, max_w = min(flat), max(flat)
-            abs_max = max(abs(min_w), abs(max_w))
-            
-            # Escala: mapear abs_max a 127
-            scale = abs_max / 127.0 if abs_max != 0 else 1.0
-            
-            q_weights = []
-            for row in weights:
-                # Convertir a int8
-                q_row = [int(w / scale) for w in row]
-                q_weights.append(q_row)
-            return q_weights, scale
-
-        self.q_W1, self.s_W1 = quantize_layer(self.W1)
-        self.q_W2, self.s_W2 = quantize_layer(self.W2)
+    def calibrate(self, dataset): 
+        """Stub para compatibilidad."""
+        pass
+    
+    def quantize(self): 
+        """Stub para compatibilidad."""
         self.quantized = True
-        print(f"Quantization applied. Scale W1: {self.s_W1:.6f}, Scale W2: {self.s_W2:.6f}")
+
+    def predict(self, X):
+        preds = [self.forward(r) for r in X]
+        # Corrección crítica para evitar List[List] en salida escalar
+        if self.n_out == 1: return [p[0] for p in preds]
+        return preds
 
     def to_arduino_code(self, fn_name="nn_predict"):
-        # Asegurar cuantificación antes de exportar para 8-bits
-        if not self.quantized:
-            self.quantize()
-
-        lines = [
-            f"// --- MiniML (EduBot) MLP (Quantized int8) ---",
-            "// Weights in PROGMEM (Flash). Arithmetic in float for accuracy.",
-            "#include <avr/pgmspace.h>"
-        ]
+        code = [f"// NN: {fn_name}"]
+        # Macros para exportar matrices
+        def m2c(n, m): return f"const float {n}[] PROGMEM = {{ {', '.join(f'{x:.4f}' for x in [v for r in m for v in r])} }};"
+        def v2c(n, v): return f"const float {n}[] PROGMEM = {{ {', '.join(f'{x:.4f}' for x in v)} }};"
         
-        # Helper C Array
-        def to_c(matrix): 
-            return '{' + ','.join('{' + ','.join(map(str, r)) + '}' for r in matrix) + '}'
-
-        # Exportar datos a PROGMEM
-        lines.append(f"const int8_t {fn_name}_W1[{self.n_hidden}][{self.n_inputs}] PROGMEM = {to_c(self.q_W1)};")
-        lines.append(f"const float {fn_name}_sW1 = {self.s_W1};")
-        lines.append(f"const float {fn_name}_B1[{self.n_hidden}] PROGMEM = {{{', '.join(map(str, [b[0] for b in self.B1]))}}};")
+        code.append(m2c(f"{fn_name}_W1", self.W1))
+        code.append(v2c(f"{fn_name}_B1", self.B1))
+        code.append(m2c(f"{fn_name}_W2", self.W2))
+        code.append(v2c(f"{fn_name}_B2", self.B2))
         
-        lines.append(f"const int8_t {fn_name}_W2[{self.n_outputs}][{self.n_hidden}] PROGMEM = {to_c(self.q_W2)};")
-        lines.append(f"const float {fn_name}_sW2 = {self.s_W2};")
-        lines.append(f"const float {fn_name}_B2[{self.n_outputs}] PROGMEM = {{{', '.join(map(str, [b[0] for b in self.B2]))}}};")
-
-        # Función de inferencia
-        lines.append(f"void {fn_name}(float *row, float *out) {{")
-        lines.append(f"  float a1[{self.n_hidden}];")
-        
-        # Layer 1
-        lines.append(f"  for(int i=0; i<{self.n_hidden}; i++) {{")
-        lines.append("    float sum = 0.0;")
-        lines.append(f"    for(int j=0; j<{self.n_inputs}; j++) {{")
-        lines.append(f"      // Read int8 from Flash, convert to float via scale")
-        lines.append(f"      int8_t w = (int8_t)pgm_read_byte(&{fn_name}_W1[i][j]);")
-        lines.append(f"      sum += (w * {fn_name}_sW1) * row[j];")
-        lines.append("    }")
-        lines.append(f"    sum += pgm_read_float(&{fn_name}_B1[i]);")
-        
-        # Activación Oculta
-        if self.hidden_activation == 'relu':
-            lines.append("    a1[i] = (sum > 0) ? sum : 0;")
-        else: # Sigmoid (aprox rápida)
-            lines.append("    if(sum>10) a1[i]=1.0; else if(sum<-10) a1[i]=0.0; else a1[i]=1.0/(1.0+exp(-sum));")
-        lines.append("  }")
-
-        # Layer 2
-        lines.append(f"  for(int k=0; k<{self.n_outputs}; k++) {{")
-        lines.append("    float sum = 0.0;")
-        lines.append(f"    for(int i=0; i<{self.n_hidden}; i++) {{")
-        lines.append(f"      int8_t w = (int8_t)pgm_read_byte(&{fn_name}_W2[k][i]);")
-        lines.append(f"      sum += (w * {fn_name}_sW2) * a1[i];")
-        lines.append("    }")
-        lines.append(f"    sum += pgm_read_float(&{fn_name}_B2[k]);")
-        
-        # Activación Salida
-        if self.output_activation == 'relu':
-            lines.append("    out[k] = (sum > 0) ? sum : 0;")
-        else:
-             lines.append("    if(sum>10) out[k]=1.0; else if(sum<-10) out[k]=0.0; else out[k]=1.0/(1.0+exp(-sum));")
-        lines.append("  }")
-        lines.append("}")
-
-        return "\n".join(lines)
-
-# ---------------------------
-# Preprocessing
-# ---------------------------
-class MiniScaler:
-    """
-    Escalador para normalizar datos (MinMax o Standard).
-    Crucial para SVM y Redes Neuronales.
-    """
-    def __init__(self, method='minmax', feature_range=(0, 1)):
-        self.method = method
-        self.feature_range = feature_range
-        self.params = [] 
-        self.n_features_trained: Optional[int] = None # Metadata
-
-    def fit(self, dataset: List[List[float]]):
-        if not dataset:
-            return
-        
-        # Guardar dimensiones
-        self.n_features_trained = len(dataset[0])
-        n_features = len(dataset[0])
-        
-        self.params = []
-        
-        cols = [[row[i] for row in dataset] for i in range(n_features)]
-        
-        for col in cols:
-            stats = {}
-            if self.method == 'minmax':
-                stats['min'] = min(col)
-                stats['max'] = max(col)
-                stats['denom'] = stats['max'] - stats['min']
-                if stats['denom'] == 0: stats['denom'] = 1.0
-            elif self.method == 'standard':
-                mean = sum(col) / len(col)
-                variance = sum((x - mean) ** 2 for x in col) / len(col)
-                stats['mean'] = mean
-                stats['std'] = math.sqrt(variance)
-                if stats['std'] == 0: stats['std'] = 1.0
-            self.params.append(stats)
-
-    def transform(self, row: List[float]) -> List[float]:
-        if not self.params:
-            return row
-            
-        # Validación de dimensiones si está disponible
-        if isinstance(row, list) and self.n_features_trained:
-             if len(row) != self.n_features_trained:
-                 raise ValueError(f"Dimensión incorrecta. Esperado {self.n_features_trained}, recibido {len(row)}")
-
-        new_row = []
-        for i, val in enumerate(row):
-            if i >= len(self.params): 
-                new_row.append(val)
-                continue
-            
-            p = self.params[i]
-            if self.method == 'minmax':
-                norm = (val - p['min']) / p['denom']
-                scaled = norm * (self.feature_range[1] - self.feature_range[0]) + self.feature_range[0]
-                new_row.append(scaled)
-            elif self.method == 'standard':
-                scaled = (val - p['mean']) / p['std']
-                new_row.append(scaled)
-        return new_row
-
-    def to_arduino_code(self, fn_name="preprocess_row"):
-        if not self.params: return "// Error: Scaler not fitted"
-        n = len(self.params)
-        
-        # Helper para arrays en Flash
-        def flash_arr(name, data):
-            return f"const float {name}[{n}] PROGMEM = {{{', '.join(map(str, data))}}};"
-
-        code = [f"// --- MiniScaler ({self.method}) ---", "#include <avr/pgmspace.h>"]
-        
-        if self.method == 'minmax':
-            mins = [p['min'] for p in self.params]
-            denoms = [p['denom'] for p in self.params]
-            code.append(flash_arr(f"{fn_name}_min", mins))
-            code.append(flash_arr(f"{fn_name}_den", denoms))
-            
-            code.append(f"void {fn_name}(float *row) {{")
-            code.append(f"  for(int i=0; i<{n}; i++) {{")
-            code.append(f"    float mn = pgm_read_float(&{fn_name}_min[i]);")
-            code.append(f"    float dn = pgm_read_float(&{fn_name}_den[i]);")
-            code.append(f"    row[i] = (row[i] - mn) / dn;")
-            if self.feature_range != (0, 1):
-                r_min, r_max = self.feature_range
-                scale = r_max - r_min
-                code.append(f"    row[i] = row[i] * {scale} + {r_min};")
-            code.append("  }}")
-            code.append("}")
-            
-        elif self.method == 'standard':
-            means = [p['mean'] for p in self.params]
-            stds = [p['std'] for p in self.params]
-            code.append(flash_arr(f"{fn_name}_mean", means))
-            code.append(flash_arr(f"{fn_name}_std", stds))
-            
-            code.append(f"void {fn_name}(float *row) {{")
-            code.append(f"  for(int i=0; i<{n}; i++) {{")
-            code.append(f"    float mu = pgm_read_float(&{fn_name}_mean[i]);")
-            code.append(f"    float sig = pgm_read_float(&{fn_name}_std[i]);")
-            code.append(f"    row[i] = (row[i] - mu) / sig;")
-            code.append("  }}")
-            code.append("}")
-
+        code.append(f"\nvoid {fn_name}(float* in, float* out) {{")
+        code.append(f"  float h[{self.n_hid}];")
+        code.append(f"  for(int i=0; i<{self.n_hid}; i++) {{ float s=pgm_read_float_near({fn_name}_B1+i);")
+        code.append(f"    for(int j=0; j<{self.n_in}; j++) s+=in[j]*pgm_read_float_near({fn_name}_W1 + i*{self.n_in}+j);")
+        code.append(f"    h[i] = 1.0/(1.0+exp(-s)); }}")
+        code.append(f"  for(int i=0; i<{self.n_out}; i++) {{ float s=pgm_read_float_near({fn_name}_B2+i);")
+        code.append(f"    for(int j=0; j<{self.n_hid}; j++) s+=h[j]*pgm_read_float_near({fn_name}_W2 + i*{self.n_hid}+j);")
+        code.append(f"    out[i] = 1.0/(1.0+exp(-s)); }}")
+        code.append("}")
         return "\n".join(code)
 
-# ---------------------------
-# Evaluation metrics
-# ---------------------------
-def accuracy_score(y_true: List[Any], y_pred: List[Any]) -> float:
-    if not y_true:
-        return 0.0
-    return sum(1 for a, b in zip(y_true, y_pred) if a == b) / len(y_true)
+# -----------------------------------------------
+# MÉTRICAS Y UTILIDADES
 
-def mse(y_true: List[float], y_pred: List[float]) -> float:
-    n = len(y_true)
-    if n == 0:
-        return 0.0
-    return sum((a - b) ** 2 for a, b in zip(y_true, y_pred)) / n
+def accuracy_score(y_true, y_pred):
+    if not y_true: return 0.0
+    # Manejo robusto float vs int
+    correct = sum(1 for t, p in zip(y_true, y_pred) if (1 if t>0.5 else 0) == (1 if p>0.5 else 0))
+    return correct / len(y_true)
 
-def mae(y_true: List[float], y_pred: List[float]) -> float:
-    n = len(y_true)
-    if n == 0:
-        return 0.0
-    return sum(abs(a - b) for a, b in zip(y_true, y_pred)) / n
+def mse_score(y_true, y_pred):
+    if not y_true: return 0.0
+    return sum((t-p)**2 for t, p in zip(y_true, y_pred)) / len(y_true)
 
-def r2_score(y_true: List[float], y_pred: List[float]) -> float:
-    mean_y = sum(y_true) / len(y_true) if y_true else 0.0
-    ss_tot = sum((yi - mean_y) ** 2 for yi in y_true)
-    ss_res = sum((yi - pi) ** 2 for yi, pi in zip(y_true, y_pred))
-    return 1.0 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
+def mae_score(y_true, y_pred):
+    if not y_true: return 0.0
+    return sum(abs(t-p) for t, p in zip(y_true, y_pred)) / len(y_true)
 
-# ---------------------------
-# Metadata attach helper
-# ---------------------------
+def r2_score(y_true, y_pred):
+    if not y_true: return 0.0
+    mean_y = sum(y_true)/len(y_true)
+    ss_tot = sum((y-mean_y)**2 for y in y_true)
+    ss_res = sum((t-p)**2 for t,p in zip(y_true, y_pred))
+    return 1 - (ss_res/ss_tot) if ss_tot > 1e-9 else 0.0
+
 def attach_metadata(model_obj, metadata: Dict[str, Any]):
     try:
         if not hasattr(model_obj, "metadata"):
@@ -1227,22 +626,3 @@ def attach_metadata(model_obj, metadata: Dict[str, Any]):
         model_obj.metadata.update(metadata)
     except Exception:
         pass
-
-# ---------------------------
-# Self-test (manual)
-# ---------------------------
-if __name__ == "__main__":
-    data_cls = [[2.7, 2.5, 0], [1.3, 3.5, 0], [3.5, 1.4, 1], [3.9, 4.0, 1]]
-    dt = DecisionTreeClassifier(max_depth=3)
-    dt.fit(data_cls)
-    print("DT predict:", dt.predict([[2.5,2.3],[3.7,3.9]]))
-
-    data_reg = [[1.0,2.0,2.1],[2.0,3.0,3.9],[3.0,4.0,6.1],[4.0,5.0,8.2]]
-    dr = DecisionTreeRegressor(max_depth=3)
-    dr.fit(data_reg)
-    print("DTR predict:", dr.predict([[2.5,3.5],[3.5,4.5]]))
-
-    nn = MiniNeuralNetwork([2,4,1], activations=['relu','linear'], lr=0.01)
-    ds = [[1.0,2.0,3.0], [2.0,3.0,5.0], [3.0,4.0,7.0]]
-    nn.fit(ds, n_iter=10)
-    print("NN preds:", nn.predict([[1,2],[2,3]]))

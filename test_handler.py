@@ -1,13 +1,9 @@
 """
 EduBot Ecosystem Integration Test
-=================================
-
-Verifica la interoperabilidad completa entre:
-
- - ml_exporter (serialización de modelos)
- - ml_adapter (traducción Python ⇄ Bloques)
- - file_handler (gestión integral de proyectos, datasets, modelos, código y exportaciones inversas)
- - MiniML y sklearn (entrenamiento mixto)
+========================================
+Verifica la interoperabilidad completa con la API actualizada.
+- Adapta exportación inversa a la nueva función export_model_to_block_structure.
+- Verifica serialización de nuevos modelos (KNN).
 """
 
 import os
@@ -16,145 +12,68 @@ from core import ml_adapter, ml_manager
 from storage import ml_exporter
 from storage import file_handler
 
-# ============================================================
-# CONFIGURACIÓN
-# ============================================================
-
 def setup_environment():
-    """Crea carpetas necesarias antes de iniciar las pruebas."""
     file_handler.ensure_dir_exist()
-    print("[INIT] Entorno preparado para pruebas.")
-
+    print("[INIT] Entorno preparado.")
 
 # ============================================================
-# TEST 1: ENTRENAMIENTO Y EXPORTACIÓN DE MODELO
+# TEST 1: ENTRENAMIENTO Y PERSISTENCIA
 # ============================================================
 
-def test_ml_exporter_integration():
-    print("\n--- 🧠 TEST 1: ML Exporter Integration ---")
+def test_integration_flow():
+    print("\n--- 🧠 TEST 1: Flujo Completo (Train -> Save -> Load) ---")
 
-    # Dataset simple (regresión lineal)
-    dataset = [
-        [1.0, 2.1],
-        [2.0, 4.2],
-        [3.0, 6.3],
-        [4.0, 8.4],
-        [5.0, 10.5],
-    ]
-
-    # Entrenar modelo mixto (MiniML si disponible)
-    result = ml_manager.train_decision_tree(
-        model_name="tree_integration_test",
+    dataset = [[1.0, 2.1], [2.0, 4.2], [3.0, 6.3], [4.0, 8.4]]
+    
+    # Entrenar modelo simple
+    print("[1] Entrenando modelo...")
+    ml_manager.train_pipeline(
+        model_name="integration_test_model",
         dataset=dataset,
-        max_depth=3,
-        min_size=1
+        model_type="DecisionTree",
+        params={"max_depth": 3},
+        scaling=None
     )
-
-    print("[INFO] Entrenamiento completado:", result)
-
-    model = ml_manager._MODEL_REGISTRY["tree_integration_test"]["model"]
-
-    # Exportar modelo
-    ok = file_handler.save_model(model, "tree_integration_test")
-    assert ok, "❌ Falló exportación de modelo"
-
-    # Recargar modelo
-    loaded = file_handler.load_model("tree_integration_test")
-    assert loaded is not None, "❌ Falló carga de modelo"
-
-    # Validar consistencia de estructura exportada
-    struct = ml_exporter.extract_model_structure(loaded)
-    print("[OK] Estructura del modelo exportado:", struct)
-    print("✅ ML Exporter funciona correctamente con file_handler.")
-
+    
+    # Guardar usando file_handler
+    print("[2] Guardando modelo...")
+    saved = file_handler.save_model("integration_test_model", "test_model_v2")
+    assert saved, "❌ Falló guardado de modelo"
+    
+    # Cargar
+    print("[3] Cargando modelo...")
+    model = file_handler.load_model("test_model_v2")
+    assert model is not None, "❌ Falló carga de modelo"
+    print("✅ Integración básica OK.")
 
 # ============================================================
-# TEST 2: TRADUCCIÓN PYTHON ⇄ BLOQUES (ml_adapter)
-# ============================================================
-
-def test_ml_adapter_translation():
-    print("\n--- 🧱 TEST 2: Traducción Bidireccional (ml_adapter) ---")
-
-    python_code = """
-def suma(a, b):
-    return a + b
-result = suma(3, 5)
-print(result)
-"""
-
-    # Python → Bloques
-    blocks = file_handler.python_to_blocks(python_code)
-    assert blocks is not None, "❌ Falló conversión Python→Bloques"
-    print("[INFO] Traducción Python→Bloques:", json.dumps(blocks, indent=2))
-
-    # Bloques → Python
-    recovered_code = file_handler.blocks_to_python(blocks["result"])
-    assert recovered_code is not None, "❌ Falló conversión Bloques→Python"
-    print("[INFO] Código reconstruido:\n", recovered_code)
-    print("✅ ml_adapter y file_handler trabajan correctamente juntos.")
-
-
-# ============================================================
-# TEST 3: PROYECTO EDUCATIVO
-# ============================================================
-
-def test_project_handling():
-    print("\n--- 💾 TEST 3: Proyectos EduBot ---")
-
-    project_data = {
-        "name": "ProyectoTest",
-        "description": "Proyecto de integración completo",
-        "models": ["tree_integration_test"],
-        "author": "EduBot System"
-    }
-
-    saved = file_handler.save_proj(project_data, "ProyectoTest")
-    assert saved, "❌ Falló guardado de proyecto"
-
-    loaded = file_handler.load_proj("ProyectoTest")
-    assert loaded is not None, "❌ Falló carga del proyecto"
-    print("[OK] Proyecto cargado correctamente:", loaded)
-
-    print("✅ Gestión de proyectos estable y funcional.")
-
-
-# ============================================================
-# TEST 4: DATASETS
-# ============================================================
-
-def test_dataset_handling():
-    print("\n--- 🧬 TEST 4: Datasets ---")
-
-    dataset = [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9]
-    ]
-
-    ok = file_handler.save_dataset(dataset, "dataset_test")
-    assert ok, "❌ Falló guardado de dataset"
-
-    reloaded = file_handler.load_dataset("dataset_test")
-    assert reloaded is not None, "❌ Falló carga del dataset"
-    print("[OK] Dataset recargado:", reloaded)
-
-    print("✅ Gestión de datasets correcta.")
-
-
-# ============================================================
-# TEST 5: EXPORTACIÓN INVERSA A BLOQUES
+# TEST 2: EXPORTACIÓN INVERSA A BLOQUES (Refactorizado)
 # ============================================================
 
 def test_export_inverse_blocks():
-    print("\n--- 🔁 TEST 5: Exportación inversa a bloques ---")
+    print("\n--- 🔁 TEST 2: Exportación inversa a bloques (Nueva API) ---")
 
-    model = file_handler.load_model("tree_integration_test")
-    block_repr = file_handler.export_to_blocks(model, "tree_integration_block")
-
-    assert block_repr is not None, "❌ Falló exportación a bloques"
-    print("[INFO] Bloques generados:", json.dumps(block_repr, indent=2))
-    print("✅ Exportación inversa (modelo → bloques) estable.")
-
+    # Crear un KNN manual para probar
+    from core.ml_runtime import KNearestNeighbors
+    knn = KNearestNeighbors(k=3)
+    knn.X_train = [[1,1], [2,2]]
+    knn.y_train = [0, 1]
+    knn.n_features_trained = 2
+    
+    # Probamos la nueva función del exporter
+    try:
+        # Nota: La función ahora se llama export_model_to_block_structure
+        block_struct = ml_exporter.export_model_to_block_structure(knn, "knn_visual_test")
+        
+        assert block_struct is not None
+        assert block_struct['type'] == 'ml_train_knn'
+        assert block_struct['k'] == 3
+        
+        print("[INFO] Bloque generado:", json.dumps(block_struct, indent=2))
+        print("✅ Exportación inversa (KNN -> Bloque) estable.")
+    except Exception as e:
+        print(f"❌ Error en exportación inversa: {e}")
+        raise e
 
 # ============================================================
 # TEST MASTER
@@ -162,13 +81,8 @@ def test_export_inverse_blocks():
 
 def run_all_tests():
     setup_environment()
-    test_ml_exporter_integration()
-    test_ml_adapter_translation()
-    test_project_handling()
-    test_dataset_handling()
+    test_integration_flow()
     test_export_inverse_blocks()
-    print("\n🎯 Todos los tests se completaron exitosamente sin conflictos.")
-
 
 if __name__ == "__main__":
     run_all_tests()

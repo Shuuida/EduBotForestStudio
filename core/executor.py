@@ -1,171 +1,162 @@
-"""Módulo ejecutor para EduBot
+"""
+Módulo ejecutor para EduBot
 Ejecuta código Python de forma segura a partir de la traducción basada en nodos.
-Si RestrictedPython y PrintCollector están disponibles y compatibles -> usarlo (wrap para compatibilidad).
-Si no -> usar fallback exec() con __builtins__ reducido (determinista).
-Siempre devolver: {'success': bool, 'output': str, 'error': str}"""
+Permite la importación controlada de módulos del núcleo (MiniML).
+"""
 
 import io
 import traceback
 import threading
 import queue
+import importlib
 from contextlib import redirect_stdout
-from typing import Dict
+from typing import Dict, Any
 
-import importlib  # Para imports seguros
+# -------------------------------------
+# CONFIGURACIÓN DE SEGURIDAD
 
-import sys
-import time
+# Lista blanca de módulos permitidos
+ALLOWED_MODULES = {
+    'math', 
+    'random', 
+    'time', 
+    'datetime',
+    'core.ml_runtime',  # VITAL: Permitir el runtime
+    'core.ml_manager',  # Opcional: si se quiere permitir gestión avanzada
+}
 
-# Intento de importaciones opcionales de RestrictedPython
-try:
-    from RestrictedPython import compile_restricted  # type: ignore
-    try:
-        from RestrictedPython.PrintCollector import PrintCollector  # type: ignore
-    except Exception:
-        PrintCollector = None
-    try:
-        from RestrictedPython import safe_builtins  # type: ignore
-    except Exception:
-        safe_builtins = {}
-except Exception:
-    compile_restricted = None
-    PrintCollector = None
-    safe_builtins = {}
+def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+    """
+    Sustituto seguro de __import__. Solo permite módulos en ALLOWED_MODULES.
+    """
+    # Manejo de imports relativos o paquetes
+    if name in ALLOWED_MODULES:
+        return importlib.__import__(name, globals, locals, fromlist, level)
+    
+    # Permitir submodulos si el padre está permitido (ej: core.ml_runtime)
+    base_name = name.split('.')[0]
+    if base_name == 'core' and name in ALLOWED_MODULES:
+         return importlib.__import__(name, globals, locals, fromlist, level)
 
-# -------------------------
-# Utilidades
+    raise ImportError(f"Importación bloqueada por seguridad: '{name}' no está permitido.")
+
+# ---------------------------------------------
+# EJECUTOR PRINCIPAL
 
 def sanitize_code(code: str) -> str:
+    """Evita palabras clave peligrosas antes de la ejecución."""
     forbidden = [
-        'import os', 'import sys', '__import__', 'eval', 'exec',
-        'open', 'compile', 'input', 'globals', 'locals', 'vars'
+        'import os', 'import sys', 'import subprocess', '__import__', 
+        'eval(', 'exec(', 'open(', 'compile(', 'input(', 
+        'globals()', 'locals()', 'vars()'
     ]
+    # Nota: No bloqueamos 'import core' porque lo manejamos en safe_import
     for kw in forbidden:
-        code = code.replace(kw, f"# {kw} (blocked)")
+        if kw in code:
+            # Comentar la línea peligrosa en lugar de romper todo
+            code = code.replace(kw, f"# BLOCKED: {kw}")
     return code
 
-# Wrapper útil para PrintCollector
-def _make_print_wrapper(pc):
-    def _wrapper(*args, sep=' ', end='\n'):
-        try:
-            text = sep.join(str(a) for a in args) + end
-            try:
-                return pc(text)
-            except TypeError:
-                if hasattr(pc, "prints") and isinstance(pc.prints, list):
-                    pc.prints.append(text)
-                elif hasattr(pc, "result"):
-                    pc.result = (pc.result or "") + text
-                return None
-        except Exception:
-            return None
-    return _wrapper
-
-# Nueva: Imports seguros (solo permitidos de core.ml_runtime, etc.)
-ALLOWED_IMPORTS = {'core.ml_runtime': ['DecisionTreeClassifier', 'RandomForestClassifier', 'MiniLinearModel', 'MiniSVM', 'MiniNeuralNetwork', 'accuracy_score']}
-
-def safe_import(module_name, names):
-    if module_name not in ALLOWED_IMPORTS:
-        raise ImportError(f"Import bloqueado: {module_name}")
-    module = importlib.import_module(module_name)
-    imported = {}
-    for name in names:
-        if name == '*':
-            for n in ALLOWED_IMPORTS[module_name]:
-                imported[n] = getattr(module, n)
-        elif name in ALLOWED_IMPORTS[module_name]:
-            imported[name] = getattr(module, name)
-        else:
-            raise ImportError(f"Import bloqueado: {name} de {module_name}")
-    return imported
-
-# -------------------------
-# Función principal con timeout
-
-def execute_user_code(code: str, timeout=5) -> Dict[str, object]:
+def execute_user_code(code: str, timeout: int = 5) -> Dict[str, Any]:
+    """
+    Ejecuta el código de usuario en un hilo separado con stdout capturado.
+    
+    Args:
+        code (str): Código Python a ejecutar.
+        timeout (int): Tiempo máximo de ejecución en segundos.
+        
+    Returns:
+        dict: {'success': bool, 'output': str, 'error': str}
+    """
     result = {'success': False, 'output': '', 'error': ''}
-
+    
     def target(q):
+        buffer = io.StringIO()
         try:
-            code = sanitize_code(code)
-            buffer = io.StringIO()
-
-            if compile_restricted and PrintCollector is not None:
-                builtins = dict(safe_builtins) if isinstance(safe_builtins, dict) else {}
-                builtins.setdefault('range', range)
-                builtins.setdefault('len', len)
-                builtins.setdefault('abs', abs)
-                builtins.setdefault('min', min)
-                builtins.setdefault('max', max)
-                builtins['import'] = safe_import  # Seguro import
-
-                pc = PrintCollector()
-                print_wrapper = _make_print_wrapper(pc)
-
-                globals_for_restricted = {
-                    '__builtins__': builtins,
-                    '_print_': print_wrapper,
-                    '_getattr_': getattr,
-                    '_getitem_': lambda obj, key: obj[key],
-                    '_getiter_': iter,
-                    '_iter_unpack_sequence_': tuple,
-                    '_write_': lambda x: x,
-                }
-
-                byte_code = compile_restricted(code, '<user_code>', 'exec')
-                exec(byte_code, globals_for_restricted)
-
-                printed = ''
-                if hasattr(pc, 'getvalue'):
-                    printed = pc.getvalue()
-                elif hasattr(pc, 'prints') and isinstance(pc.prints, list):
-                    printed = '\n'.join(str(p) for p in pc.prints)
-                elif hasattr(pc, 'result'):
-                    printed = str(pc.result)
-
-                q.put({'success': True, 'output': printed, 'error': ''})
-                return
-
-            # FALLBACK
+            # Saneamiento básico
+            safe_code = sanitize_code(code)
+            
+            # Configuración del entorno restringido (Sandbox)
+            # Definimos qué funciones 'built-in' puede ver el estudiante
             safe_builtins_map = {
+                # Básicos
                 'print': print,
                 'range': range,
                 'len': len,
+                'int': int,
+                'float': float,
+                'str': str,
+                'list': list,
+                'dict': dict,
+                'set': set,
+                'tuple': tuple,
+                'bool': bool,
+                
+                # Matemáticas y Utilidades
                 'abs': abs,
                 'min': min,
                 'max': max,
+                'sum': sum,
+                'round': round,
+                'zip': zip,
+                'map': map,
+                'filter': filter,
+                'sorted': sorted,
+                'enumerate': enumerate,
+                
+                # Excepciones
                 'Exception': Exception,
-                'BaseException': BaseException,
-                'import': safe_import,
+                'ValueError': ValueError,
+                'TypeError': TypeError,
+                
+                # Soporte para Clases y POO
+                '__build_class__': __build_class__,  
+                'object': object,                    # Necesario para herencia base
+                'super': super,                      # Necesario para llamar al padre
+                'classmethod': classmethod,          # Decorador útil para enseñar POO
+                'staticmethod': staticmethod,        # Decorador útil para enseñar POO
+                'property': property,                # Getters/Setters pythonicos
+                'type': type,                        # Para introspección de tipos
+                'isinstance': isinstance,            # Validación de tipos
+                
+                # Sistema
+                '__import__': safe_import,
+                '__name__': '__main__'               # Evita errores en algunos contextos de ejecución
             }
 
+            # Entorno global inicial
             env = {'__builtins__': safe_builtins_map}
 
+            # Ejecución
             with redirect_stdout(buffer):
-                exec(code, env)
+                exec(safe_code, env)
 
             q.put({'success': True, 'output': buffer.getvalue(), 'error': ''})
 
         except SyntaxError as se:
-            q.put({'success': False, 'output': '', 'error': f"SyntaxError: {se}"})
-        except Exception as e:
-            q.put({'success': False, 'output': '', 'error': traceback.format_exc()})
+            q.put({'success': False, 'output': buffer.getvalue(), 'error': f"Error de Sintaxis: {se}"})
+        except ImportError as ie:
+            q.put({'success': False, 'output': buffer.getvalue(), 'error': f"Error de Importación: {ie}"})
+        except Exception:
+            q.put({'success': False, 'output': buffer.getvalue(), 'error': traceback.format_exc()})
 
+    # Gestión de Hilos (Threading) para evitar bloqueos infinitos (while True)
     q = queue.Queue()
     thread = threading.Thread(target=target, args=(q,))
     thread.start()
+    
     try:
         thread.join(timeout)
         if thread.is_alive():
-            # No se puede matar thread en Python; fallback a error
-            result['error'] = "Execution timeout"
+            result['error'] = "Tiempo de ejecución excedido (Timeout). ¿Tienes un bucle infinito?"
+            # Nota: Python threads no se pueden matar forzosamente de forma segura, 
+            # pero el frontend dejará de esperar.
         else:
-            result = q.get()
-    except queue.Empty:
-        result['error'] = "Execution timeout"
-    return result
+            if not q.empty():
+                result = q.get()
+            else:
+                result['error'] = "Error desconocido: No se recibió respuesta del hilo."
+    except Exception as e:
+        result['error'] = str(e)
 
-# Demo
-if __name__ == "__main__":
-    demo = "for i in range(3):\n    print('Demo', i)\n"
-    print(execute_user_code(demo))
+    return result

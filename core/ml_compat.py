@@ -3,15 +3,13 @@ ml_compat.py
 ------------
 Módulo de compatibilidad y utilidades globales para MiniML Framework.
 
-Proporciona funciones de comparación segura, extracción numérica y
-normalización de estructuras de árbol, eliminando errores del tipo:
-'<=' not supported between instances of 'float' and 'dict'.
-
-No depende de librerías externas (sin NumPy, sin pandas).
-Puede ser replicado en firmware C o hardware embebido.
+ACTUALIZADO:
+- Soporte para 'Scalar Leaves' (Hojas como valores crudos) en aplanado de árboles.
+- Funciones de imputación y chequeo de dimensiones.
+- Sin dependencias externas.
 """
 
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Union
 
 # -----------------------------------
 #  Funciones básicas de tipo
@@ -21,7 +19,7 @@ def _is_number(x):
     return isinstance(x, (int, float))
 
 def to_float_if_possible(x):
-    """Convierte a float si es posible. Si no puede, devuelve None."""
+    """Convierte a float si es posible. Si no, devuelve None."""
     if _is_number(x):
         return float(x)
     if isinstance(x, str):
@@ -31,257 +29,163 @@ def to_float_if_possible(x):
             return None
     return None
 
-
 # ------------------------------
 #  Resolución numérica
 
 def resolve_numeric(value):
     """
     Extrae un número flotante desde cualquier tipo simple o dict.
-    - Si es int/float -> devuelve float(value)
-    - Si es str numérico -> float(value)
-    - Si es dict:
-        * Busca clave 'value', 'score', 'threshold', 'val', 'acc', 'accuracy'
-        * Si la clave contiene número, devuelve ese número
-        * Si el dict tiene un solo valor numérico, devuelve ese número
-    Devuelve None si no encuentra número válido.
     """
     f = to_float_if_possible(value)
     if f is not None:
         return f
-
+    
     if isinstance(value, dict):
-        for k in ("value", "score", "threshold", "val", "acc", "accuracy"):
+        # Intentar claves comunes
+        for k in ['value', 'score', 'threshold', 'val', 'acc', 'accuracy']:
             if k in value:
-                f2 = to_float_if_possible(value[k])
-                if f2 is not None:
-                    return f2
-
+                return to_float_if_possible(value[k])
+        # Si tiene un solo valor, devolverlo
         if len(value) == 1:
-            sole = next(iter(value.values()))
-            f2 = to_float_if_possible(sole)
-            if f2 is not None:
-                return f2
-    return None
+            return to_float_if_possible(list(value.values())[0])
+            
+    return 0.0 # Fallback seguro
 
-
-# -------------------------------
-#  Comparación segura
-
-def safe_compare_le(row_val, node_val, subnode_handler=None):
+def safe_compare_le(val_a, val_b):
     """
-    Compara row_val <= node_val de forma segura.
-    - Convierte ambos a float con resolve_numeric().
-    - Si node_val es dict sin número, se asume subnodo y se delega al handler.
-    - Si alguno no es convertible, devuelve False en lugar de error.
+    Comparación segura menor o igual (<=).
+    Maneja tipos mixtos resolviendo a float.
     """
-    rv = resolve_numeric(row_val)
-    nv = resolve_numeric(node_val)
+    a = resolve_numeric(val_a)
+    b = resolve_numeric(val_b)
+    return a <= b
 
-    # Si ambos son números, comparar directamente
-    if rv is not None and nv is not None:
-        return rv <= nv
+# -------------------------------------------
+#  Aplanado de Árboles (Exportación a C)
 
-    # Si el valor del nodo no es numérico pero es un dict, puede ser un subnodo
-    if nv is None and isinstance(node_val, dict):
-        if callable(subnode_handler):
-            # Devolver el resultado del sub-manejador
-            return subnode_handler(node_val, row_val)
-        else:
-            # No hay manejador, no se puede comparar
-            return False
-
-    # Si el valor de la fila no es numérico, no se puede tomar una decisión
-    if rv is None:
-        return False
-
-    # Fallback seguro: si no se puede comparar, no cumple la condición
-    return False
-
-
-# ---------------------------------
-#  Normalización de árbol
-
-def normalize_tree_node(node):
+def _flatten_tree_to_arrays(node: Union[Dict, int, float]) -> Dict[str, List]:
     """
-    Recorre recursivamente un nodo y normaliza los valores.
-    Convierte los valores numéricos representados como string o dict simple.
+    Convierte un árbol recursivo (dict/escalar) en arrays paralelos para C (PROGMEM).
+    Soporta:
+     - Formato Legacy: Hojas son dicts {'index': -1, 'value': ...}
+     - Formato v2.3: Hojas son escalares (int/float)
     """
-    if node is None:
-        return None
-    if not isinstance(node, dict):
-        return node
-
-    # Normalizar hijos
-    if "left" in node:
-        node["left"] = normalize_tree_node(node["left"])
-    if "right" in node:
-        node["right"] = normalize_tree_node(node["right"])
-
-    # Normalizar valor del nodo
-    if "value" in node:
-        v = node["value"]
-        f = resolve_numeric(v)
-        if f is not None:
-            node["value"] = f
-        elif isinstance(v, dict):
-            node["value"] = normalize_tree_node(v)
-    return node
-
-
-def normalize_tree(tree):
-    """Normaliza un árbol completo."""
-    if isinstance(tree, list):
-        return [normalize_tree_node(n) for n in tree]
-    if isinstance(tree, dict):
-        return normalize_tree_node(tree)
-    return tree
-
-# ---------------------------------
-#  Comparación de métricas
-
-def safe_metric_compare(metric, best_score):
-    """
-    Compara métricas de evaluación evitando errores de tipo.
-    Extrae valores numéricos de dicts o strings.
-    Devuelve False si la comparación no es posible.
-    """
-    m_val = resolve_numeric(metric)
-    b_val = resolve_numeric(best_score)
-
-    # Solo comparar si ambos son números válidos
-    if m_val is not None and b_val is not None:
-        return m_val <= b_val
-
-    # Si no se pueden convertir, no se puede mejorar el score
-    return False
-
-
-# ---------------------------------------------------
-#  VALIDACIÓN Y LIMPIEZA DE DATOS
-
-def check_dims(X: List[List[Any]], expected_cols: int, context: str = ""):
-    """
-    Valida estrictamente que X tenga el número esperado de columnas.
-    """
-    if not X:
-        raise ValueError(f"{context}: El dataset de entrada está vacío.")
-    
-    # Verificar primera fila
-    if len(X[0]) != expected_cols:
-        raise ValueError(f"{context}: Dimensión incorrecta. Esperado {expected_cols} columnas, recibido {len(X[0])}.")
-
-def impute_missing_values(dataset: List[List[Any]], strategy: str = 'mean') -> List[List[Any]]:
-    """
-    Imputa valores faltantes (None, NaN, strings vacíos) en un dataset numérico.
-    
-    Args:
-        dataset: Lista de listas.
-        strategy: 'mean' (media) o 'mode' (moda).
-        
-    Returns:
-        Dataset limpio (copia nueva).
-    """
-    if not dataset:
-        return []
-
-    n_cols = len(dataset[0])
-    n_rows = len(dataset)
-    clean_data = [row[:] for row in dataset] # Copia profunda básica
-    
-    # Calcular estadísticas por columna
-    replacements = []
-    for c in range(n_cols):
-        valid_values = []
-        for r in range(n_rows):
-            val = resolve_numeric(dataset[r][c])
-            if val is not None:
-                valid_values.append(val)
-        
-        if not valid_values:
-            replacements.append(0.0) # Fallback si toda la columna es NaN
-            continue
-
-        if strategy == 'mean':
-            replacements.append(sum(valid_values) / len(valid_values))
-        elif strategy == 'mode':
-            counts = {}
-            for v in valid_values:
-                counts[v] = counts.get(v, 0) + 1
-            replacements.append(max(counts, key=counts.get))
-        else:
-            replacements.append(0.0)
-
-    # Aplicar reemplazos
-    for r in range(n_rows):
-        for c in range(n_cols):
-            if resolve_numeric(clean_data[r][c]) is None:
-                clean_data[r][c] = replacements[c]
-                
-    return clean_data
-
-# ---------------------------------------------------
-# FUNCIONES DE APLANADO DE ÁRBOLES DE DECISIÓN
-
-def _flatten_tree_to_arrays(root_node: Any) -> Dict[str, List]:
-    """
-    Convierte un árbol de decisión (dict anidado) en arrays paralelos
-    compatibles con firmware C.
-    
-    Usa un recorrido DFS (Pre-order) para construir los arrays.
-    
-    CORREGIDO: Esta función ahora maneja correctamente la diferencia entre
-    nodos hoja (que son valores, ej: 0, 1, 3.14) y
-    nodos de división (que son dicts con 'index', 'value', 'left', 'right').
-    """
-    # Arrays paralelos que se llenarán
     feature_index = []
     threshold = []
     left_child = []
     right_child = []
-    value = [] # Almacenará el valor de la hoja (si es hoja) o 0.0 (si es división)
-
-    def _traverse(node: Any) -> int:
-        """
-        Función interna recursiva.
-        Añade el nodo actual a los arrays y devuelve su índice.
-        """
-        # Obtener el índice para este nodo
-        current_index = len(feature_index)
-
-        # CORRECCIÓN
-        # Caso Base: Es un nodo Hoja (NO es un dict)
-        if not isinstance(node, dict):
-            feature_index.append(-1)          # Marcador C para hoja
-            threshold.append(0.0)             # Valor dummy
-            left_child.append(-1)             # Marcador C para hoja
-            right_child.append(-1)            # Marcador C para hoja
-            value.append(node)                # <-- Almacena el valor real de la hoja (ej: 0, 1, 3.14)
-            return current_index
-
-        # Caso Recursivo: Es un nodo de División (Split)
-        # 1. Reservar espacio para el nodo actual (pre-order)
-        feature_index.append(node['index'])
-        threshold.append(node['value']) # <-- 'value' aquí es el umbral
-        value.append(0.0)               # Valor dummy (solo las hojas tienen valor)
+    value = []
+    
+    # Cola para BFS (Breadth-First Search) para índices deterministas
+    # Guardamos (nodo_objeto, indice_padre, es_hijo_izq)
+    # Pero para generar arrays planos indexados, es mejor un recorrido lineal
+    # y asignar índices dinámicamente.
+    
+    # Estrategia: Recorrido recursivo primero para asignar IDs, luego llenar arrays.
+    # O más simple: Usar una lista y un cursor.
+    
+    node_list = [node] # Lista de nodos pendientes de procesar
+    processed_nodes = [] # Lista final en orden
+    
+    # Linearizar el árbol (BFS)
+    cursor = 0
+    while cursor < len(node_list):
+        curr = node_list[cursor]
+        cursor += 1
         
-        # Índices de hijos (se llenarán después de la recursión)
-        left_child.append(-1)
-        right_child.append(-1)
+        # Detectar si es hoja
+        is_leaf = False
+        if not isinstance(curr, dict):
+            is_leaf = True
+        elif curr.get('index') == -1 or 'left' not in curr:
+            is_leaf = True
+            
+        if not is_leaf:
+            node_list.append(curr['left'])
+            node_list.append(curr['right'])
+            
+    # Construir arrays
+    # Ahora node_list tiene todos los nodos en orden BFS.
+    # El nodo i no tiene hijos en 2*i+1, esto no es un heap completo.
+    # Necesitamos recalcular los índices de los hijos basados en su posición en node_list.
+    
+    # Re-hacemos el paso 1 pero guardando referencias de índices
+    # Estructura de la cola: (nodo, indice_en_arrays)
+    queue = [node]
+    
+    # Mapeo de identidad no sirve porque los escalares no son únicos.
+    # Necesitamos reconstruir recursivamente y luego aplanar.
+    
+    # Enfoque: Aplanado recursivo con punteros globales
+    feature_index = []
+    threshold = []
+    left_child = []
+    right_child = []
+    value = []
+    
+    next_free_index = 0
+    
+    def register_node(n):
+        nonlocal next_free_index
+        idx = next_free_index
+        next_free_index += 1
+        return idx
 
-        # 2. Recorrer hijos
-        left_idx = _traverse(node['left'])
-        right_idx = _traverse(node['right'])
-
-        # 3. Actualizar los punteros de índice de este nodo
-        left_child[current_index] = left_idx
-        right_child[current_index] = right_idx
-
-        return current_index
-
-    # Iniciar el aplanado desde el nodo raíz
-    _traverse(root_node)
-
+    # Recorrido BFS con cola que guarda (nodo, index_asignado)
+    q = [(node, register_node(node))]
+    
+    # Los arrays se llenarán en desorden, necesitamos pre-llenarlos o usar dicts
+    temp_storage = {} # index -> data
+    
+    head = 0
+    while head < len(q):
+        curr_node, curr_idx = q[head]
+        head += 1
+        
+        # Analizar nodo
+        is_leaf = False
+        val = 0.0
+        
+        if not isinstance(curr_node, dict):
+            is_leaf = True
+            val = float(curr_node)
+        elif curr_node.get('index') == -1 or 'left' not in curr_node:
+            is_leaf = True
+            val = float(curr_node.get('value', 0.0))
+            
+        if is_leaf:
+            temp_storage[curr_idx] = {
+                'f': -1, 't': 0.0, 'l': -1, 'r': -1, 'v': val
+            }
+        else:
+            # Es nodo de decisión
+            # Registramos hijos
+            l_idx = register_node(curr_node['left'])
+            r_idx = register_node(curr_node['right'])
+            
+            # Encolamos hijos
+            q.append((curr_node['left'], l_idx))
+            q.append((curr_node['right'], r_idx))
+            
+            temp_storage[curr_idx] = {
+                'f': int(curr_node['index']),
+                't': float(curr_node['value']),
+                'l': l_idx,
+                'r': r_idx,
+                'v': 0.0
+            }
+            
+    # Convertir temp_storage a arrays ordenados
+    # Como usamos register_node secuencialmente, los índices van de 0 a N-1
+    count = len(temp_storage)
+    for i in range(count):
+        data = temp_storage[i]
+        feature_index.append(data['f'])
+        threshold.append(data['t'])
+        left_child.append(data['l'])
+        right_child.append(data['r'])
+        value.append(data['v'])
+        
     return {
         "feature_index": feature_index,
         "threshold": threshold,
@@ -291,43 +195,74 @@ def _flatten_tree_to_arrays(root_node: Any) -> Dict[str, List]:
     }
 
 def _unflatten_arrays_to_tree(tree_struct: Dict[str, List]) -> Dict[str, Any]:
-    """
-    Reconstruye un árbol de decisión (dict anidado) a partir de los
-    arrays paralelos.
-    
-    Esta es la función inversa de _flatten_tree_to_arrays, necesaria
-    para la deserialización en Python.
-    """
-    # Extraer los arrays
-    feature_index = tree_struct['feature_index']
-    threshold = tree_struct['threshold']
-    left_child = tree_struct['left_child']
-    right_child = tree_struct['right_child']
-    value = tree_struct['value']
+    """Reconstruye un árbol a partir de arrays (para carga desde JSON)."""
+    f_idx = tree_struct['feature_index']
+    thresh = tree_struct['threshold']
+    l_child = tree_struct['left_child']
+    r_child = tree_struct['right_child']
+    vals = tree_struct['value']
 
-    def _build_node(index: int) -> Dict[str, Any]:
-        """
-        Función interna recursiva.
-        Construye el nodo (y sus sub-árboles) para el índice dado.
-        """
-        # Caso Base: Es un nodo Hoja
-        if feature_index[index] == -1:
-            # CORRECCIÓN
-            # Devuelve el valor de la hoja directamente, no un dict
-            return value[index]
-
-        # Caso Recursivo: Es un nodo de División
-        # Construir recursivamente los hijos
-        left_node = _build_node(left_child[index])
-        right_node = _build_node(right_child[index])
-
-        # Construir el nodo actual
+    def build(i):
+        if f_idx[i] == -1:
+            # Hoja: Devolver dict para compatibilidad con visualizador,
+            # o valor si se prefiere. El visualizador prefiere dicts.
+            return {'index': -1, 'value': vals[i]}
+        
         return {
-            'index': feature_index[index],
-            'value': threshold[index], # <-- 'value' es el umbral
-            'left': left_node,
-            'right': right_node
+            'index': f_idx[i],
+            'value': thresh[i],
+            'left': build(l_child[i]),
+            'right': build(r_child[i])
         }
+    
+    if not f_idx: return None
+    return build(0)
 
-    # Iniciar la reconstrucción desde el nodo raíz (índice 0)
-    return _build_node(0)
+# -------------------------------------------
+#  Utilidades de Datos
+
+def check_dims(X, expected_dim):
+    """Verifica dimensiones de entrada."""
+    if not X: return False
+    if len(X[0]) != expected_dim:
+        return False
+    return True
+
+def impute_missing_values(dataset: List[List[Any]], strategy: str = 'mean') -> List[List[float]]:
+    """
+    Rellena valores None/NaN.
+    
+    Args:
+        dataset: Lista de listas con datos crudos.
+        strategy: 'mean' (única soportada actualmente, mantenida por compatibilidad de API).
+        
+    Returns:
+        Nuevo dataset con floats limpios.
+    """
+    if not dataset: return []
+    
+    n_cols = len(dataset[0])
+    # n_rows = len(dataset) # Unused
+    col_sums = [0.0] * n_cols
+    col_counts = [0] * n_cols
+    
+    # Calcular medias (ignorando Nones)
+    for row in dataset:
+        for i in range(n_cols):
+            val = to_float_if_possible(row[i])
+            if val is not None:
+                col_sums[i] += val
+                col_counts[i] += 1
+    
+    means = [ (s/c if c>0 else 0.0) for s,c in zip(col_sums, col_counts) ]
+    
+    # Reemplazar
+    clean_data = []
+    for row in dataset:
+        new_row = []
+        for i in range(n_cols):
+            val = to_float_if_possible(row[i])
+            new_row.append(val if val is not None else means[i])
+        clean_data.append(new_row)
+        
+    return clean_data

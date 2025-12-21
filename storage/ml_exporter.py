@@ -1,31 +1,26 @@
 """
 ==============================
 Gestor de exportación para pipelines ML en el ecosistema MiniML/Sklearn de EduBot.
+ACTUALIZADO: Soporte nativo para inspección de objetos MiniML (v2) y reconstrucción de bloques.
 
 Provee herramientas para:
 - Exportar estructuras ML (clasificación/regresión) a JSON.
-- Reconstruir pipelines desde JSON.
-- Guardar modelos entrenados (_MODEL_REGISTRY) junto con su pipeline.
-- Registrar errores y trazas de exportación.
+- Inspeccionar modelos en memoria para generar representaciones visuales.
+- Puente entre el Runtime (Python Objects) y el Frontend (JSON Blocks).
 """
 
 from typing import List, Dict, Any, Optional
-from core import ml_struct_rules
-from core.ml_compat import _flatten_tree_to_arrays, _unflatten_arrays_to_tree
 import json
 import time
-import os
+
+# Dependencias del Núcleo
+from core import ml_struct_rules
+from core import ml_runtime
 from core import ml_factory
-# Opcional: importar _MODEL_REGISTRY desde ml_manager o ml_runtime
-try:
-    from core import ml_manager
-    _MODEL_REGISTRY = getattr(ml_manager, "_MODEL_REGISTRY", {})
-except Exception:
-    _MODEL_REGISTRY = {}
+from core.ml_compat import _flatten_tree_to_arrays, _unflatten_arrays_to_tree
 
 # Registro de eventos internos
 _EXPORT_LOG: List[str] = []
-
 
 # -------------------------
 # UTILIDADES INTERNAS
@@ -35,435 +30,258 @@ def _log(msg: str):
     ts = time.strftime("[%H:%M:%S]")
     _EXPORT_LOG.append(f"{ts} {msg}")
 
-
 def get_export_log(limit: int = 25) -> List[str]:
     """Devuelve las últimas líneas del registro interno de exportación."""
     return _EXPORT_LOG[-limit:]
 
+# -----------------------------------------------------------
+# SERIALIZACIÓN (MODELO -> JSON) - Para Guardar en Disco
 
-# -------------------------
-# EXPORTACIÓN DE PIPELINES
-
-def export_blocks_to_struct(blocks: List[Dict[str, Any]], *,
-                            include_meta: bool = True,
-                            mode: Optional[str] = None) -> Dict[str, Any]:
+def serialize_model(model_obj: Any) -> Dict[str, Any]:
     """
-    Convierte una lista de bloques ML en una estructura estándar (pipeline estructurado).
-
-    Parámetros:
-        blocks: lista de bloques visuales ML.
-        include_meta: si True, incluye metadatos globales.
-        mode: modo de ejecución ('classification', 'regression', 'auto', etc.).
-
-    Retorna:
-        Diccionario estructurado representando el pipeline ML completo.
+    Convierte un objeto modelo en memoria a un diccionario serializable para disco.
+    Usa la lógica de extracción unificada.
     """
-    pipeline = []
-    for b in blocks:
-        try:
-            s = ml_struct_rules.block_to_struct(b)
-            if ml_struct_rules.validate_struct(s):
-                pipeline.append(s)
-            else:
-                _log(f"Bloque inválido detectado: {b.get('action', '?')}")
-                pipeline.append({'action': 'invalid', 'raw': b})
-        except Exception as e:
-            _log(f"Error exportando bloque: {e}")
-            pipeline.append({'action': 'error', 'error': str(e), 'raw': b})
-
-    result = {'pipeline': pipeline}
-
-    if include_meta:
-        result['meta'] = {
-            'engine': 'MiniML',
-            'version': '1.0',
-            'mode': mode or 'auto',
-            'export_time': time.strftime("%Y-%m-%d %H:%M:%S"),
-            'blocks_count': len(pipeline)
-        }
-
-    return result
-
-
-def export_struct_to_blocks(struct_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Convierte una estructura (pipeline JSON) en una lista de bloques ML visuales.
-    Compatible con acciones mixtas ('train_dt', 'predict', 'eval_ext', etc.).
-    """
-    blocks = []
-    for s in struct_data.get('pipeline', []):
-        try:
-            blocks.append(ml_struct_rules.struct_to_block(s))
-        except Exception as e:
-            _log(f"Error al convertir struct a bloque: {e}")
-            blocks.append({'type': 'error', 'raw': s})
-    return blocks
-
-
-def export_struct_to_json_file(struct_data: Dict[str, Any], path: str, *,
-                               pretty: bool = True) -> None:
-    """
-    Guarda la estructura ML como un archivo JSON exportable.
-    Incluye trazas internas del proceso.
-    """
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-
-    with open(path, "w", encoding="utf-8") as f:
-        if pretty:
-            json.dump(struct_data, f, indent=4, ensure_ascii=False)
-        else:
-            json.dump(struct_data, f, separators=(",", ":"), ensure_ascii=False)
-    _log(f"Estructura ML exportada correctamente a {path}")
-
-
-# -------------------------
-# EXPORTACIÓN DE MODELOS
-
-def export_model_snapshot(model_name: str, *,
-                          include_pipeline: bool = True,
-                          pipeline_struct: Optional[Dict[str, Any]] = None,
-                          output_dir: str = "exports",
-                          pretty: bool = True) -> Optional[str]:
-    """
-    Exporta un modelo entrenado del registro interno junto con su pipeline (si aplica).
-
-    Parámetros:
-        model_name: nombre del modelo en el registro interno (_MODEL_REGISTRY).
-        include_pipeline: si True, incluye la estructura del pipeline asociado.
-        pipeline_struct: estructura ML opcional a incluir.
-        output_dir: carpeta donde se guardará el archivo exportado.
-        pretty: si True, guarda el JSON con formato legible.
-
-    Retorna:
-        Ruta del archivo exportado o None si el modelo no existe.
-    """
-    model_entry = _MODEL_REGISTRY.get(model_name)
-    if not model_entry:
-        _log(f"Modelo '{model_name}' no encontrado en _MODEL_REGISTRY.")
-        return None
-
-    snapshot = {
-        "meta": {
-            "engine": "MiniML",
-            "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "model_name": model_name,
-            "mode": model_entry.get("mode", "unknown"),
-            "type": model_entry.get("type", "unknown"),
-        },
-        "model": {}
-    }
-
-    # Intentar serializar parámetros del modelo (si es sklearn o MiniML)
-    model = model_entry.get("model")
-    if hasattr(model, "__dict__"):
-        try:
-            snapshot["model"]["params"] = model.__dict__
-        except Exception as e:
-            _log(f"No se pudo serializar __dict__ del modelo: {e}")
-
-    # Incluir pipeline si se solicita
-    if include_pipeline:
-        if not pipeline_struct:
-            pipeline_struct = {"pipeline": [], "meta": {"info": "Sin estructura asociada"}}
-        snapshot["pipeline"] = pipeline_struct
-
-    # Guardar archivo JSON
-    os.makedirs(output_dir, exist_ok=True)
-    filename = os.path.join(output_dir, f"{model_name}_snapshot.json")
-    with open(filename, "w", encoding="utf-8") as f:
-        if pretty:
-            json.dump(snapshot, f, indent=4, ensure_ascii=False)
-        else:
-            json.dump(snapshot, f, separators=(",", ":"), ensure_ascii=False)
-
-    _log(f"Snapshot de modelo '{model_name}' exportado a {filename}")
-    return filename
-
-# ---------------------------------------------------------
-# SERIALIZACIÓN Y DESERIALIZACIÓN DE MODELOS (MiniML / sklearn)
-
-def serialize_model(model_obj, metadata=None):
-    """
-    Serializa un modelo ML (MiniML o sklearn) en un diccionario JSON-safe.
-    Usado por file_handler.save_model().
-    """
-    import inspect
-    metadata = metadata or {}
-    data = {"meta": metadata}
-
     try:
-        # sklearn
-        if hasattr(model_obj, "get_params"):
-            params = model_obj.get_params()
-            data["framework"] = "sklearn"
-            data["params"] = params
-            data["repr"] = repr(model_obj)
-            return data
-
-        # MiniML (DecisionTree / RandomForest personalizados)
-        elif hasattr(model_obj, "root") or hasattr(model_obj, "trees"):
-            data["framework"] = "MiniML"
-            # CORRECCIÓN C-COMPATIBLE
-            if hasattr(model_obj, "trees"): # RandomForest
-                data["type"] = "RandomForest"
-                data["tree_structs"] = []
-                for t in model_obj.trees:
-                    root = getattr(t, "root", None)
-                    if root:
-                        data["tree_structs"].append(_flatten_tree_to_arrays(root))
-            elif hasattr(model_obj, "root"): # DecisionTree
-                data["type"] = "DecisionTree"
-                if model_obj.root:
-                    data["tree_struct"] = _flatten_tree_to_arrays(model_obj.root)
-            data["repr"] = f"{type(model_obj).__name__} - MiniML structure"
-            return data
-
-        # NUEVOS MODELOS MINI ML
-        elif hasattr(model_obj, "coefficients") and hasattr(model_obj, "intercept"):
-            data["framework"] = "MiniML"
-            data["type"] = "MiniLinearModel"
-            data["coefficients"] = getattr(model_obj, "coefficients", [])
-            data["intercept"] = getattr(model_obj, "intercept", 0.0)
-            data["repr"] = "MiniLinearModel - MiniML"
-            return data
-
-        elif hasattr(model_obj, "kernel") and hasattr(model_obj, "weights"):
-            data["framework"] = "MiniML"
-            data["type"] = "MiniSVM"
-            data["kernel"] = getattr(model_obj, "kernel", "linear")
-            data["weights"] = getattr(model_obj, "weights", [])
-            data["bias"] = getattr(model_obj, "bias", 0.0)
-            data["support_vectors"] = getattr(model_obj, "support_vectors", []) # <-- AÑADIDO
-            data["repr"] = "MiniSVM - MiniML"
-            return data
-
-        elif hasattr(model_obj, "layers") and hasattr(model_obj, "weights"):
-            data["framework"] = "MiniML"
-            data["type"] = "MiniNeuralNetwork"
-            data["layers"] = getattr(model_obj, "layers", [])
-            data["weights"] = getattr(model_obj, "weights", [])
-            data["biases"] = getattr(model_obj, "biases", [])
-            data["activations"] = getattr(model_obj, "activations", []) # <-- AÑADIDO
-            data["repr"] = "MiniNeuralNetwork - MiniML"
-            return data
-
-
-        # Caso genérico
-        else:
-            data["framework"] = "unknown"
-            data["repr"] = str(model_obj)
-            return data
-
-    except Exception as e:
-        raise RuntimeError(f"Error serializando modelo: {e}")
-
-
-def deserialize_model(data):
-    """
-    Deserializa un modelo guardado (desde JSON) y lo reconstruye.
-    Compatible con MiniML y sklearn.
-    """
-    from core import ml_runtime
-    framework = data.get("framework")
-    model = None
-
-    try:
-        # sklearn
-        if framework == "sklearn":
-            from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+        data = extract_model_structure(model_obj)
+        
+        # Agregamos metadatos específicos de persistencia si faltan
+        if "model_module" not in data:
+            data["model_module"] = model_obj.__class__.__module__
+        if "model_class" not in data:
+            data["model_class"] = model_obj.__class__.__name__
             
-            # CORRECCIÓN: Extraemos la representación del modelo
-            model_repr = data.get("repr", "")
-            params = data.get("params", {})
+        # Casos especiales que necesitan datos extra para ser re-entrenables o funcionales
+        # KNN: Necesita guardar los datos de entrenamiento (Lazy Learning)
+        if isinstance(model_obj, ml_runtime.KNearestNeighbors):
+            data["X_train"] = getattr(model_obj, "X_train", [])
+            data["y_train"] = getattr(model_obj, "y_train", [])
+            
+        # NN: Necesita pesos exactos (no solo config)
+        if isinstance(model_obj, ml_runtime.MiniNeuralNetwork):
+            data["weights"] = {
+                "W1": getattr(model_obj, "W1", []),
+                "B1": getattr(model_obj, "B1", []),
+                "W2": getattr(model_obj, "W2", []),
+                "B2": getattr(model_obj, "B2", [])
+            }
+            
+        return data
+        
+    except Exception as e:
+        _log(f"Error serializing model: {e}")
+        raise RuntimeError(f"Fallo en serialización: {e}")
 
-            # Reconstruir el objeto modelo basándose en la representación
-            # (Esto es necesario porque el JSON no guarda el tipo exacto)
-            if "DecisionTreeRegressor" in model_repr:
-                model = DecisionTreeRegressor()
-            elif "DecisionTreeClassifier" in model_repr:
-                model = DecisionTreeClassifier()
-            # ... (Añadir aquí más modelos sklearn a futuro si son soportados por el framework)
-            else:
-                # Si no se reconoce, devolver el stub como antes para evitar un crash
-                model = {"info": "sklearn model stub", "params": params, "error": "Unknown model type in repr"}
-                return model # Salir temprano si no se puede reconstruir
+# -----------------------------------------------------------
+# DESERIALIZACIÓN (JSON -> MODELO) - Para Cargar de Disco
 
-            # Si el modelo se creó, re-aplicar sus parámetros
-            if params and hasattr(model, "set_params"):
-                model.set_params(**params)
-            # Ahora 'model' es un objeto sklearn real, no un dict
-
-        # MiniML
-        elif framework == "MiniML":
-                model_type = data.get("type", "").lower()
-                
-                # Usar Factory para crear la instancia base
-                # Mapeamos tipos del JSON a tipos del Factory
-                factory_type = model_type
-                if "tree" in model_type: factory_type = "DecisionTree"
-                if "forest" in model_type: factory_type = "RandomForest"
-                
-                # Manejo especial para RandomForest que necesita n_trees en init
-                params = {}
-                if "tree_structs" in data:
-                    params['n_trees'] = len(data["tree_structs"])
-                    
-                try:
-                    model = ml_factory.create_model(model_type, params)
-                except ValueError:
-                    # Fallback manual si el factory falla o el tipo es muy custom
-                    pass
-
-            # LinearRegression
-        elif "linear" in model_type or "regression" in model_type:
-            model = ml_runtime.MiniLinearModel() 
-            model.coefficients = data.get("coefficients", [])
-            model.intercept = data.get("intercept", 0.0)
-            return model
+def deserialize_model(data: Dict[str, Any]) -> Any:
+    """
+    Reconstruye un objeto modelo en memoria a partir de su diccionario JSON.
+    """
+    try:
+        framework = data.get("framework", "unknown")
+        model_type = data.get("type", "").lower()
+        
+        if framework == "MiniML":
+            # Reconstrucción MiniML
+            
+            # K-Nearest Neighbors
+            if "knn" in model_type:
+                model = ml_factory.create_model("knn", {
+                    "k": data.get("k", 3),
+                    "task": data.get("task", "classification")
+                })
+                # Restaurar estado interno
+                if "X_train" in data: model.X_train = data["X_train"]
+                if "y_train" in data: model.y_train = data["y_train"]
+                model.n_features_trained = len(model.X_train[0]) if model.X_train else 0
+                return model
 
             # SVM
-        elif "svm" in model_type:
-            model = ml_runtime.MiniSVM()
-            model.support_vectors = data.get("support_vectors", [])
-            model.weights = data.get("weights", [])
-            model.bias = data.get("bias", 0.0)
-            return model
+            elif "svm" in model_type:
+                model = ml_factory.create_model("svm", {
+                    "learning_rate": data.get("learning_rate", 0.001),
+                    "lambda_param": data.get("lambda_param", 0.01),
+                    "n_iters": data.get("n_iters", 1000)
+                })
+                if "weights" in data: model.weights = data["weights"]
+                if "bias" in data: model.bias = data["bias"]
+                return model
+
+            # Linear Model
+            elif "linear" in model_type:
+                model = ml_factory.create_model("linear", {
+                    "learning_rate": data.get("learning_rate", 0.01),
+                    "epochs": data.get("epochs", 1000)
+                })
+                if "weights" in data: model.weights = data["weights"]
+                if "intercept" in data: model.bias = data["intercept"]
+                return model
 
             # Neural Network
-        elif "neural" in model_type or "network" in model_type:
-            model = ml_runtime.MiniNeuralNetwork() 
-            model.weights = data.get("weights", [])
-            model.biases = data.get("biases", [])
-            model.activations = data.get("activations", [])
-            model.layers = data.get("layers", [])
-            return model
+            elif "neural" in model_type:
+                config = data.get("config", {})
+                params = {
+                    "n_inputs": config.get("n_inputs", 2),
+                    "n_hidden": config.get("n_hidden", 4),
+                    "n_outputs": config.get("n_outputs", 1),
+                    "epochs": data.get("epochs", 1000),
+                    "learning_rate": config.get("learning_rate", 0.1)
+                }
+                model = ml_factory.create_model("neural", params)
+                
+                # Restaurar pesos si existen
+                w_data = data.get("weights", {})
+                if w_data:
+                    model.W1 = w_data.get("W1", [])
+                    model.B1 = w_data.get("B1", [])
+                    model.W2 = w_data.get("W2", [])
+                    model.B2 = w_data.get("B2", [])
+                
+                if "quantized" in data: model.quantized = data["quantized"]
+                return model
 
-        return {"framework": framework or "unknown", "repr": repr(data)}
+            # Árboles (DecisionTree / RandomForest)
+            elif "decisiontree" in model_type:
+                is_reg = "regressor" in data.get("model_class", "").lower()
+                # Usa factory para decidir Regressor/Classifier
+                model = ml_factory.create_model("decisiontree_regressor" if is_reg else "decisiontree", {
+                    "max_depth": data.get("max_depth", 5),
+                    "min_size": data.get("min_size", 1)
+                })
+                # Reconstruir árbol desde struct aplanada
+                if "struct" in data:
+                    model.root = _unflatten_arrays_to_tree(data["struct"])
+                return model
+
+            elif "randomforest" in model_type:
+                is_reg = "regressor" in data.get("model_class", "").lower()
+                model = ml_factory.create_model("randomforest_regressor" if is_reg else "randomforest", {
+                    "n_trees": data.get("n_trees", 5),
+                    "max_depth": data.get("max_depth", 5)
+                })
+                # Nota: Restaurar un RF completo requeriría serializar cada árbol de la lista 'trees'.
+                # Por simplicidad en MVP, a veces solo se guarda la config.
+                # Si se necesita persistencia total de RF, se debería iterar data['trees'] aquí.
+                return model
+
+        # Fallback
+        _log(f"Framework desconocido o no soportado para deserialización: {framework}")
+        return None
 
     except Exception as e:
-        raise RuntimeError(f"Error deserializando modelo: {e}")
+        _log(f"Error deserializing model: {e}")
+        raise RuntimeError(f"Fallo en deserialización: {e}")
 
-# ---------------------------------------------------------
-# EXTRACTOR DE ESTRUCTURAS DE MODELOS (para visualización y exportación)
+# -----------------------------------------------------------
+# EXTRACCIÓN ESTRUCTURAL (Para Visualización / Bloques)
 
-def extract_model_structure(model_obj):
+def extract_model_structure(model_obj: Any) -> Dict[str, Any]:
     """
-    Extrae una representación estructural uniforme de un modelo ML.
-    Compatible con MiniML y sklearn.
-    
-    Devuelve un diccionario estructurado que puede ser convertido
-    fácilmente en bloques visuales por ml_struct_rules.struct_to_block().
+    Analiza un objeto modelo y extrae su estructura estandarizada.
     """
-    if isinstance(model_obj, dict) and 'model' in model_obj:
-        model_obj = model_obj['model']
-
+    struct = {}
     try:
-        # MiniML: DecisionTree o RandomForest
-        if hasattr(model_obj, "root") or hasattr(model_obj, "trees"):
+        # K-Nearest Neighbors
+        if isinstance(model_obj, ml_runtime.KNearestNeighbors):
             struct = {
                 "framework": "MiniML",
-                "type": "RandomForest" if hasattr(model_obj, "trees") else "DecisionTree",
-            }
-            # CORRECCIÓN
-            # Aplanar los árboles a arrays compatibles con C
-            if hasattr(model_obj, "trees"):
-                struct["tree_structs"] = [] # Usar el mismo nombre que en serialize_model
-                for t in model_obj.trees:
-                    root = getattr(t, "root", None)
-                    if root:
-                        struct["tree_structs"].append(_flatten_tree_to_arrays(root))
-            elif hasattr(model_obj, "root"):
-                root = getattr(model_obj, "root", None)
-                if root:
-                    struct["tree_struct"] = _flatten_tree_to_arrays(root) # Usar el mismo nombre
-
-            if hasattr(model_obj, "metadata") and "saved_at" in model_obj.metadata:
-                struct["saved_at"] = model_obj.metadata["saved_at"]
-
-            return struct
-        
-        model_type = str(type(model_obj)).split(".")[-1].replace("'>", "").lower()
-
-        # MiniML SVM
-        if "svm" in model_type:
-            struct = {
-                "framework": "MiniML",
-                "type": "SVM",
-                "support_vectors": getattr(model_obj, "support_vectors", []),
-                "weights": getattr(model_obj, "weights", []),
-                "bias": getattr(model_obj, "bias", 0.0),
-                "kernel": getattr(model_obj, "kernel", "linear"),
+                "type": "knn", 
+                "k": getattr(model_obj, "k", 3),
+                "task": getattr(model_obj, "task", "classification"),
             }
             return struct
 
-        # MiniML Linear Regression
-        if "linear" in model_type or "regression" in model_type:
+        # Mini SVM
+        if isinstance(model_obj, ml_runtime.MiniSVM):
+            weights = getattr(model_obj, "weights", [])
+            bias = getattr(model_obj, "bias", 0.0)
             struct = {
                 "framework": "MiniML",
-                "type": "LinearRegression",
-                "coefficients": getattr(model_obj, "coefficients", []),
-                "intercept": getattr(model_obj, "intercept", 0.0),
-                "trained_at": getattr(model_obj, "trained_at", None),
+                "type": "svm",
+                "learning_rate": getattr(model_obj, "lr", 0.001),
+                "lambda_param": getattr(model_obj, "lambda_param", 0.01),
+                "n_iters": getattr(model_obj, "n_iters", 1000),
+                "weights": weights,
+                "bias": bias
             }
             return struct
 
-        # MiniML Neural Network
-        if "neural" in model_type or "network" in model_type:
+        # Mini Linear Model
+        if isinstance(model_obj, ml_runtime.MiniLinearModel):
+            weights = getattr(model_obj, "weights", [])
+            bias = getattr(model_obj, "bias", 0.0)
             struct = {
                 "framework": "MiniML",
-                "type": "NeuralNetwork",
-                "layers": getattr(model_obj, "layers", []),
-                "weights": getattr(model_obj, "weights", []),
-                "biases": getattr(model_obj, "biases", []),
-                "activation": getattr(model_obj, "activation", "relu"),
-                "trained_at": getattr(model_obj, "trained_at", None),
+                "type": "linear",
+                "learning_rate": getattr(model_obj, "lr", 0.01),
+                "epochs": getattr(model_obj, "epochs", 1000),
+                "weights": weights,
+                "intercept": bias # Mapeo para visualizador
             }
             return struct
 
-        try:
-            # Intentar detectar/extraer estructura sklearn (si aplica)
-            if "sklearn" in str(type(model_obj)):
-                struct = {"framework": "sklearn"}
-                model_type = type(model_obj).__name__
+        # Mini Neural Network
+        if isinstance(model_obj, ml_runtime.MiniNeuralNetwork):
+            struct = {
+                "framework": "MiniML",
+                "type": "neural",
+                "config": {
+                    "n_inputs": getattr(model_obj, "n_in", 2),
+                    "n_hidden": getattr(model_obj, "n_hid", 4),
+                    "n_outputs": getattr(model_obj, "n_out", 1),
+                    "learning_rate": getattr(model_obj, "lr", 0.1),
+                },
+                "epochs": getattr(model_obj, "epochs", 1000),
+                "trained": hasattr(model_obj, "W1") and len(model_obj.W1) > 0
+            }
+            if hasattr(model_obj, "quantized"):
+                struct["quantized"] = model_obj.quantized
+            return struct
 
-                # RandomForest (ensemble)
-                if hasattr(model_obj, "estimators_"):
-                    struct["type"] = "RandomForest"
-                    struct["trees"] = []
-                    for est in model_obj.estimators_:
-                        # est.tree_ tiene arrays; guardamos representaciones simples
-                        tree = est.tree_
-                        struct["trees"].append({
-                            "features": getattr(tree, "feature", []).tolist() if hasattr(tree, "feature") else [],
-                            "thresholds": getattr(tree, "threshold", []).tolist() if hasattr(tree, "threshold") else [],
-                            "values": getattr(tree, "value", []).tolist() if hasattr(tree, "value") else []
-                        })
+        # Árboles y Bosques
+        # Detección por atributos para ser agnóstico a la clase exacta
+        if hasattr(model_obj, "root") and hasattr(model_obj, "max_depth"): 
+            struct = {
+                "framework": "MiniML",
+                "type": "DecisionTree",
+                "max_depth": getattr(model_obj, "max_depth", 10),
+                "min_size": getattr(model_obj, "min_size", 1)
+            }
+            # Aplanar estructura para guardado eficiente
+            if getattr(model_obj, "root", None):
+                try:
+                    struct["struct"] = _flatten_tree_to_arrays(model_obj.root)
+                except Exception: pass
+            return struct
 
-                # DecisionTree (single)
-                elif hasattr(model_obj, "tree_"):
-                    tree = model_obj.tree_
-                    struct["type"] = "DecisionTree"
-                    struct["tree"] = {
-                        "features": getattr(tree, "feature", []).tolist() if hasattr(tree, "feature") else [],
-                        "thresholds": getattr(tree, "threshold", []).tolist() if hasattr(tree, "threshold") else [],
-                        "values": getattr(tree, "value", []).tolist() if hasattr(tree, "value") else []
-                    }
+        if hasattr(model_obj, "trees") and isinstance(model_obj.trees, list):
+            struct = {
+                "framework": "MiniML",
+                "type": "RandomForest",
+                "n_trees": len(model_obj.trees),
+                "max_depth": getattr(model_obj, "max_depth", 10),
+            }
+            return struct
 
-                # metadata opcional
-                if hasattr(model_obj, "metadata") and "saved_at" in getattr(model_obj, "metadata", {}):
-                    struct["saved_at"] = model_obj.metadata["saved_at"]
-
-                # Si hemos llegado hasta aquí, retornamos la estructura sklearn válida (o parcialmente válida)
-                return struct
-
-            # Si no es sklearn, salimos del try para retornar fallback "unknown" abajo
-        except Exception as e:
-            # Si sklearn estaba presente pero hubo algún error al extraer la estructura,
-            # devolvemos un struct que indique que es sklearn pero no soportado (y el error).
-            return {"framework": "sklearn", "type": "unsupported", "error": str(e), "repr": repr(model_obj)}
-        
-        # No era sklearn (o no se intentó extracción) -> devolver unknown (fallthrough seguro)
-        return {"framework": "unknown", "repr": repr(model_obj)}
+        # Fallback genérico
+        return {"framework": "unknown", "repr": repr(model_obj), "type": "UnknownModel"}
 
     except Exception as e:
-        raise RuntimeError(f"Error extrayendo estructura del modelo: {e}")
+        _log(f"Error extracting model structure: {e}")
+        return {"framework": "error", "error": str(e)}
+
+# -----------------------------------------------------------
+# RECONSTRUCCIÓN VISUAL (Objeto -> Bloque)
+
+def export_model_to_block_structure(model_obj: Any, model_name: str = "exported_model") -> Dict[str, Any]:
+    """
+    Convierte un objeto modelo en memoria directamente a un bloque visual JSON.
+    """
+    internal_struct = extract_model_structure(model_obj)
+    internal_struct["model_name"] = model_name
+    internal_struct["action"] = "visualize" 
+    
+    # Delegar a ml_struct_rules para formato visual
+    return ml_struct_rules.struct_to_visual_block(internal_struct)

@@ -1,6 +1,6 @@
 """
 Reglas de traducción Bloques -> Código Python (Machine Learning).
-Contiene conversores seguros con docstrings y try/except internos.
+ACTUALIZADO: Sincronizado con las firmas del nuevo ml_runtime (MiniML Engine).
 """
 
 from typing import Dict, Any
@@ -34,7 +34,6 @@ def ml_dataset_block_to_code(block: Dict[str, Any]) -> str:
 
 
 def ml_train_dt_block_to_code(block: Dict[str, Any]) -> str:
-    """Entrenamiento de Decision Tree en código Python."""
     try:
         ds = block.get("dataset", "data")
         model = block.get("model_name", "dt_model")
@@ -51,7 +50,6 @@ def ml_train_dt_block_to_code(block: Dict[str, Any]) -> str:
 
 
 def ml_train_rf_block_to_code(block: Dict[str, Any]) -> str:
-    """Entrenamiento de Random Forest en código Python."""
     try:
         ds = block.get("dataset", "data")
         model = block.get("model_name", "rf_model")
@@ -72,16 +70,18 @@ def ml_train_rf_block_to_code(block: Dict[str, Any]) -> str:
 
 
 def ml_train_svm_block_to_code(block: Dict[str, Any]) -> str:
-    """Entrenamiento de SVM en código Python."""
+    """Entrenamiento de SVM (Actualizado: epochs -> n_iters)."""
     try:
         ds = block.get("dataset", "data")
         model = block.get("model_name", "svm_model")
         lr = block.get("learning_rate", 0.001)
         lambda_param = block.get("lambda_param", 0.01)
         epochs = block.get("epochs", 1000)
+        
+        # CORRECCIÓN: ml_runtime.MiniSVM usa 'n_iters', no 'epochs'
         return (
             f"from core.ml_runtime import MiniSVM\n"
-            f"{model} = MiniSVM(learning_rate={lr}, lambda_param={lambda_param}, epochs={epochs})\n"
+            f"{model} = MiniSVM(learning_rate={lr}, lambda_param={lambda_param}, n_iters={epochs})\n"
             f"{model}.fit({ds})\n"
         )
     except Exception as e:
@@ -89,7 +89,6 @@ def ml_train_svm_block_to_code(block: Dict[str, Any]) -> str:
 
 
 def ml_train_linear_block_to_code(block: Dict[str, Any]) -> str:
-    """Entrenamiento de Linear Model en código Python."""
     try:
         ds = block.get("dataset", "data")
         model = block.get("model_name", "linear_model")
@@ -105,25 +104,52 @@ def ml_train_linear_block_to_code(block: Dict[str, Any]) -> str:
 
 
 def ml_train_nn_block_to_code(block: Dict[str, Any]) -> str:
-    """Entrenamiento de Neural Network en código Python."""
+    """Entrenamiento de Neural Network (Actualizado: input_size -> n_inputs)."""
     try:
         ds = block.get("dataset", "data")
         model = block.get("model_name", "nn_model")
         hidden_size = block.get("hidden_size", 4)
         epochs = block.get("epochs", 1000)
         lr = block.get("lr", 0.01)
-        input_size = len(block.get("data", [[]])[0]) - 1 if block.get("data") else "input_size"  # Dinámico si posible
-        return (
-            f"from core.ml_runtime import MiniNeuralNetwork\n"
-            f"{model} = MiniNeuralNetwork(input_size={input_size}, hidden_size={hidden_size}, epochs={epochs}, lr={lr})\n"
-            f"{model}.fit({ds})\n"
-        )
+        
+        # Lógica para inferir n_inputs desde el código generado es difícil sin ejecutarlo.
+        # Asumimos que el usuario o el adaptador proveen 'n_inputs'.
+        # Si no, usamos len(data[0])-1 dinámicamente en el código generado.
+        
+        code = f"from core.ml_runtime import MiniNeuralNetwork\n"
+        
+        # Generamos un código que calcula n_inputs dinámicamente si no se provee
+        n_inputs_val = block.get("n_inputs")
+        
+        if n_inputs_val:
+             code += f"{model} = MiniNeuralNetwork(n_inputs={n_inputs_val}, n_hidden={hidden_size}, n_outputs=1, epochs={epochs}, learning_rate={lr})\n"
+        else:
+             # Generación inteligente: Calcular inputs basado en el dataset en tiempo de ejecución
+             code += f"# Auto-detect n_inputs from {ds}\n"
+             code += f"_n_in = len({ds}[0]) - 1 if {ds} and len({ds}) > 0 else 1\n"
+             code += f"{model} = MiniNeuralNetwork(n_inputs=_n_in, n_hidden={hidden_size}, n_outputs=1, epochs={epochs}, learning_rate={lr})\n"
+
+        code += f"{model}.fit({ds})\n"
+        return code
     except Exception as e:
         return f"# Error en ml_train_nn_block_to_code: {e}\n"
 
+def ml_train_knn_block_to_code(block: Dict[str, Any]) -> str:
+    try:
+        dataset = block.get("dataset", "data")
+        model_name = block.get("model_name", "knn_model")
+        k = block.get("k", 3)
+        task = block.get("task", "'classification'")
+        
+        return (
+            f"from core.ml_runtime import KNearestNeighbors\n"
+            f"{model_name} = KNearestNeighbors(k={k}, task={task})\n"
+            f"{model_name}.fit({dataset})\n"
+        )
+    except Exception as e:
+        return f"# Error en ml_train_knn_block_to_code: {e}\n"
 
 def ml_predict_block_to_code(block: Dict[str, Any]) -> str:
-    """Genera código para predicciones con un modelo entrenado."""
     try:
         model = block.get("model", "model")
         X = block.get("X", "X")
@@ -134,7 +160,6 @@ def ml_predict_block_to_code(block: Dict[str, Any]) -> str:
 
 
 def ml_eval_block_to_code(block: Dict[str, Any]) -> str:
-    """Genera código Python para evaluación de modelo."""
     try:
         y_true = block.get("y_true", "y_true")
         y_pred = block.get("y_pred", "y_pred")
@@ -146,7 +171,7 @@ def ml_eval_block_to_code(block: Dict[str, Any]) -> str:
     except Exception as e:
         return f"# Error en ml_eval_block_to_code: {e}\n"
 
-# Nuevo: Dict dinámico para extensión futura
+# Registro Maestro
 BLOCK_TO_CODE = {
     'ml_dataset': ml_dataset_block_to_code,
     'ml_train_dt': ml_train_dt_block_to_code,
@@ -154,8 +179,10 @@ BLOCK_TO_CODE = {
     'ml_train_svm': ml_train_svm_block_to_code,
     'ml_train_linear': ml_train_linear_block_to_code,
     'ml_train_nn': ml_train_nn_block_to_code,
+    'ml_train_knn': ml_train_knn_block_to_code,
     'ml_predict': ml_predict_block_to_code,
     'ml_eval': ml_eval_block_to_code,
+    'ml_eval_ext': ml_eval_block_to_code, # Alias
 }
 
 def get_ml_code(block: Dict[str, Any]) -> str:

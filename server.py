@@ -25,6 +25,8 @@ from core.ml_struct_rules import block_to_struct as ml_block_to_struct
 from storage import ml_exporter
 from storage import file_handler
 from core.executor import execute_user_code
+from estimators import memory_estimator
+from core import ml_manager
 
 # ---------------------------------------------
 app = Flask(__name__)
@@ -34,7 +36,7 @@ CORS(app)
 def home():
     return {"status": "EduBot Backend Running", "version": "b1.2"}
 
-# ============================================================
+# ----------------------------------------------------------
 # TRADUCCIÓN BIDIRECCIONAL PYTHON ⇄ BLOQUES
 
 @app.route("/translate", methods=["POST"])
@@ -48,7 +50,7 @@ def translate():
         return jsonify({"error": "Expected JSON object"}), 400
 
     direction = data.get("direction")
-    mode = data.get("mode", "code")  # code | struct
+    mode = data.get("mode", "code")
 
     if not direction:
         return jsonify({"error": "Missing 'direction'"}), 400
@@ -58,7 +60,8 @@ def translate():
     try:
         if mode == "struct" and direction == "to_struct":
             blocks = data.get("blocks", [])
-            result = ml_exporter.export_blocks_to_struct(blocks)
+            # Corrección SRP: Usar reglas directamente
+            result = [ml_block_to_struct(b) for b in blocks]
             return jsonify(result), 200
 
         elif direction == "to_python":
@@ -77,7 +80,7 @@ def translate():
     except Exception as e:
         return jsonify({"error": f"Translation error: {str(e)}"}), 500
 
-# ============================================================
+# -----------------------------------------------
 # EJECUCIÓN DE CÓDIGO PYTHON
 
 @app.route("/run", methods=["POST"])
@@ -85,21 +88,14 @@ def run():
     try:
         data = request.get_json(force=True)
         code = data.get("code", "")
-
         if not isinstance(code, str) or not code.strip():
             return jsonify({"error": "Invalid or empty code"}), 400
-
         result = execute_user_code(code)
-        return jsonify({
-            "success": result.get("success", False),
-            "output": result.get("output", ""),
-            "error": result.get("error", "")
-        })
-
+        return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# ============================================================
+# ---------------------------------------------------------
 # EJECUCIÓN DE PIPELINES ML (bloques o estructuras)
 
 @app.route("/ml_execute", methods=["POST"])
@@ -107,23 +103,20 @@ def ml_execute():
     try:
         data = request.get_json(force=True)
         blocks = data.get("blocks") or data.get("structs")
-
         if not blocks or not isinstance(blocks, list):
             return jsonify({"error": "No blocks/structs provided"}), 400
-
         structs = []
         for b in blocks:
             if isinstance(b, dict) and "action" in b:
                 structs.append(b)
             else:
                 structs.append(ml_block_to_struct(b))
-
         result = execute_structs(structs)
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ============================================================
+# ----------------------------------------------------------
 # EXPORTACIÓN ESTRUCTURAL (JSON / YAML)
 
 @app.route("/export_struct", methods=["POST"])
@@ -133,10 +126,10 @@ def export_struct():
         blocks = data.get("blocks", [])
         export_format = data.get("format", "json")
         file_name = data.get("file_name", "ml_pipeline")
-
-        struct_data = ml_exporter.export_blocks_to_struct(blocks)
+        
+        struct_data = [ml_block_to_struct(b) for b in blocks]
         os.makedirs("exports", exist_ok=True)
-
+        
         if export_format == "yaml":
             import yaml
             content = yaml.dump(struct_data, allow_unicode=True)
@@ -144,20 +137,16 @@ def export_struct():
         else:
             content = json.dumps(struct_data, indent=4, ensure_ascii=False)
             path = f"exports/{file_name}.json"
-
+            
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
-
-        return jsonify({
-            "success": True,
-            "file": path,
-            "data_preview": struct_data
-        }), 200
+            
+        return jsonify({"success": True, "file": path, "data_preview": struct_data}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ============================================================
+# --------------------------------------------------------------
 # FILE HANDLER — GESTIÓN UNIFICADA DE ARCHIVOS
 
 @app.route("/file/save", methods=["POST"])
@@ -188,14 +177,43 @@ def list_files():
     try:
         files = {
             "projects": file_handler.list_projs(),
-            "models": os.listdir("./models"),
-            "datasets": os.listdir("./datasets")
+            "models": os.listdir("./models") if os.path.exists("./models") else [],
+            "datasets": os.listdir("./datasets") if os.path.exists("./datasets") else []
         }
         return jsonify(files)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ============================================================
+#------------------------------------------------------------
+# ESTIMADOR DE MEMORIA (32KB Flash (32768), 2KB SRAM (2048))
+
+@app.route("/model/estimate_memory", methods=["POST"])
+def api_estimate_memory():
+    try:
+        data = request.get_json(force=True)
+        model_name = data.get("name")
+        
+        # Obtener modelo del manager
+        entry = ml_manager._MODEL_REGISTRY.get(model_name)
+        if not entry:
+            return jsonify({"error": "Modelo no encontrado"}), 404
+            
+        model = entry['model']
+        
+        # Ejecutar estimación
+        # Target Arduino Uno: 32KB Flash (32768), 2KB SRAM (2048)
+        stats = memory_estimator.estimate_memory(
+            model, 
+            quantized=True, # Asumimos optimización activada por defecto
+            target_flash=32256, # Dejar algo para bootloader
+            target_sram=2048
+        )
+        
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ----------------------------------------------------
 # STATUS (Diagnóstico rápido)
 
 @app.route("/status", methods=["GET"])
@@ -210,7 +228,7 @@ def status():
         }
     })
 
-# ============================================================
+# ----------------------------------------------------
 # MAIN ENTRY
 
 if __name__ == "__main__":

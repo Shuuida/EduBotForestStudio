@@ -1,25 +1,37 @@
 """
 Adaptador universal para la ejecución de estructuras ML y puente de traducción.
-Conserva compatibilidad total con módulos de clasificación y regresión ya probados.
+Actualizado para arquitectura unificada (train_pipeline) y soporte completo de modelos (KNN, SVM, NN).
 """
 
 from typing import Any, Dict, List, Callable
 import json
 import traceback
-#import time
+import os
 
 # Dependencias del ecosistema ML
 from core import ml_manager
 
-# Registro local de modelos
+# Registro local de modelos (caché para ejecución en lote)
 _models: Dict[str, Any] = {}
 
-# =====================================================
+# ---------------------------------------
 # Helpers internos
 
 def _load_csv_to_list(path: str) -> List[List[Any]]:
     import csv
-    with open(path, 'r', encoding='utf-8') as f:
+    
+    # Lógica de resolución de rutas inteligente
+    target_path = path
+    if not os.path.exists(target_path):
+        # Si no está en raíz, buscar en ./datasets
+        candidate = os.path.join("datasets", path)
+        if os.path.exists(candidate):
+            target_path = candidate
+    
+    if not os.path.exists(target_path):
+         raise FileNotFoundError(f"No se encuentra el archivo: {path} (buscado en raíz y /datasets)")
+
+    with open(target_path, 'r', encoding='utf-8') as f:
         reader = csv.reader(f)
         return [list(map(_coerce_num, row)) for row in reader]
 
@@ -35,103 +47,131 @@ def _ensure_dataset(struct: Dict[str, Any], context: Dict[str, Any]):
     src = struct.get('source', 'inline')
     data = struct.get('data')
     path = struct.get('path')
-    if src == 'file' and path:
+    
+    # Aceptar tanto 'file' como 'csv' como indicadores de archivo
+    if (src == 'file' or src == 'csv') and path:
         data = _load_csv_to_list(path)
+        
     if not data:
-        raise ValueError(f"Dataset vacío o no válido en {name}")
+        raise ValueError(f"Dataset vacío o no válido en '{name}'. Verifique la ruta del CSV.")
+        
     context.setdefault('datasets', {})[name] = data
     return data
 
 def _coerce_json_if_str(value):
-    """Convierte JSON en lista si viene como string."""
     if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except Exception:
-            return value
+        try: return json.loads(value)
+        except Exception: return value
     return value
 
-# =====================================================
-# Handlers de acciones ML
+# -------------------------------------------------
+# Mappers de Parámetros (Bloque -> Factory)
 
-def _train_dt(struct: Dict[str, Any], context: Dict[str, Any]):
-    """Entrena Decision Tree con soporte dual (clasificación y regresión)."""
+def _dt_params(struct, dataset):
+    return {
+        'max_depth': struct.get('max_depth', 10),
+        'min_size': struct.get('min_size', 1),
+        'n_features': struct.get('n_features', None)
+    }
+
+def _rf_params(struct, dataset):
+    return {
+        'n_trees': struct.get('n_trees', 5),
+        'max_depth': struct.get('max_depth', 10),
+        'min_size': struct.get('min_size', 1),
+        'sample_size': struct.get('sample_size', 1.0),
+        'n_features': struct.get('n_features', None),
+        'seed': struct.get('seed', None)
+    }
+
+def _svm_params(struct, dataset):
+    return {
+        'learning_rate': struct.get('learning_rate', 0.001),
+        'lambda_param': struct.get('lambda_param', 0.01),
+        'n_iters': struct.get('epochs', 1000) # Mapeo epochs -> n_iters
+    }
+
+def _linear_params(struct, dataset):
+    return {
+        'learning_rate': struct.get('learning_rate', 0.01),
+        'epochs': struct.get('epochs', 1000)
+    }
+
+def _nn_params(struct, dataset):
+    # Inferencia automática de dimensiones
+    n_inputs = struct.get('n_inputs')
+    if n_inputs is None and dataset and len(dataset) > 0:
+        n_inputs = len(dataset[0]) - 1 # Asumiendo última columna target
+    
+    return {
+        'n_inputs': n_inputs or 1,
+        'n_hidden': struct.get('hidden_size', 4),
+        'n_outputs': struct.get('n_outputs', 1),
+        'epochs': struct.get('epochs', 1000),
+        'learning_rate': struct.get('lr', 0.01)
+    }
+
+def _knn_params(struct, dataset):
+    return {
+        'k': struct.get('k', 3),
+        'task': struct.get('task', 'classification')
+    }
+
+# --------------------------------------------------
+# Handlers de acciones ML (Unified Pipeline)
+
+def _train_model(struct: Dict[str, Any], context: Dict[str, Any], 
+                         model_type: str, param_mapper: Callable):
+    """
+    Handler genérico que conecta los bloques con ml_manager.train_pipeline.
+    """
     ds_name = struct.get('dataset', 'data')
     if 'datasets' not in context or ds_name not in context['datasets']:
         raise ValueError(f"Dataset '{ds_name}' no encontrado")
 
     dataset = context['datasets'][ds_name]
-    model_name = struct.get('model_name', 'dt_model')
-    max_depth = struct.get('max_depth', 10)
-    min_size = struct.get('min_size', 1)
-    n_features = struct.get('n_features', None)
+    model_name = struct.get('model_name', f'{model_type.lower()}_model')
+    
+    # Construir parámetros específicos del modelo
+    params = param_mapper(struct, dataset)
+    
+    # Detectar escalado (si el bloque lo soporta en el futuro)
+    scaling = struct.get('scaling', None)
 
-    # Mantiene compatibilidad total con ml_manager
-    meta = ml_manager.train_decision_tree(
-        name=model_name,
+    # Ejecutar Pipeline Unificado
+    result = ml_manager.train_pipeline(
+        model_name=model_name,
         dataset=dataset,
-        max_depth=max_depth,
-        min_size=min_size,
-        n_features=n_features
+        model_type=model_type,
+        params=params,
+        scaling=scaling
     )
 
-    # Sincroniza modelo local para predict posteriores
-    try:
-        entry = ml_manager._MODEL_REGISTRY.get(model_name)
-        if entry:
-            _models[model_name] = entry.get('model')
-    except Exception:
-        _models[model_name] = None
+    # Sincronizar caché local
+    if result.get('model'):
+        _models[model_name] = result['model']
 
-    return {'status': 'trained', 'model': model_name, 'meta': meta}
+    return {'status': 'trained', 'model': model_name, 'meta': result.get('meta')}
 
-
-def _train_rf(struct: Dict[str, Any], context: Dict[str, Any]):
-    """Entrena Random Forest con soporte dual."""
-    ds_name = struct.get('dataset', 'data')
-    if 'datasets' not in context or ds_name not in context['datasets']:
-        raise ValueError(f"Dataset '{ds_name}' no encontrado")
-
-    dataset = context['datasets'][ds_name]
-    model_name = struct.get('model_name', 'rf_model')
-    n_trees = struct.get('n_trees', 5)
-    max_depth = struct.get('max_depth', 10)
-    min_size = struct.get('min_size', 1)
-    sample_size = struct.get('sample_size', 1.0)
-    n_features = struct.get('n_features', None)
-    seed = struct.get('seed', None)
-
-    meta = ml_manager.train_random_forest(
-        name=model_name,
-        dataset=dataset,
-        n_trees=n_trees,
-        max_depth=max_depth,
-        min_size=min_size,
-        sample_size=sample_size,
-        n_features=n_features,
-        seed=seed
-    )
-
-    try:
-        entry = ml_manager._MODEL_REGISTRY.get(model_name)
-        if entry:
-            _models[model_name] = entry.get('model')
-    except Exception:
-        _models[model_name] = None
-
-    return {'status': 'trained', 'model': model_name, 'meta': meta}
+# Wrappers específicos
+def _train_dt(struct, context): return _train_model(struct, context, 'DecisionTree', _dt_params)
+def _train_rf(struct, context): return _train_model(struct, context, 'RandomForest', _rf_params)
+def _train_svm(struct, context): return _train_model(struct, context, 'MiniSVM', _svm_params)
+def _train_linear(struct, context): return _train_model(struct, context, 'MiniLinearModel', _linear_params)
+def _train_nn(struct, context): return _train_model(struct, context, 'MiniNeuralNetwork', _nn_params)
+def _train_knn(struct, context): return _train_model(struct, context, 'KNearestNeighbors', _knn_params)
 
 
 def _predict(struct: Dict[str, Any], context: Dict[str, Any]):
     """Ejecuta predicción con modelo ya entrenado."""
     model_name = struct.get('model', 'model')
+    
+    # Buscar primero en caché local, luego en registro global
     model = _models.get(model_name)
-
     if model is None:
         try:
-            entry = ml_manager._MODEL_REGISTRY.get(model_name)
-            if entry:
-                model = entry.get('model')
+            model = ml_manager.get_model(model_name)
+            if model:
                 _models[model_name] = model
         except Exception:
             pass
@@ -140,16 +180,21 @@ def _predict(struct: Dict[str, Any], context: Dict[str, Any]):
         raise ValueError(f"Modelo '{model_name}' no encontrado para predicción")
 
     X = _coerce_json_if_str(struct.get('X'))
-    preds = model.predict(X)
+    
+    # Usar predict de ml_manager que maneja escalado automático
+    preds = ml_manager.predict(model, X)
+    
     output_var = struct.get('output', 'preds')
     context.setdefault('outputs', {})[output_var] = preds
     return {'status': 'predicted', 'model': model_name, 'output_var': output_var, 'preds': preds}
 
 
 def _eval(struct: Dict[str, Any], context: Dict[str, Any]):
-    """Evalúa métricas del modelo (usa ml_manager.evaluate_ext si está disponible)."""
+    """Evalúa métricas del modelo (usa ml_manager.evaluate_ext)."""
     y_true = _coerce_json_if_str(struct.get('y_true'))
     y_pred = struct.get('y_pred')
+    
+    # Resolver referencia a variable de salida
     if isinstance(y_pred, str) and y_pred in context.get('outputs', {}):
         y_pred = context['outputs'][y_pred]
 
@@ -157,7 +202,7 @@ def _eval(struct: Dict[str, Any], context: Dict[str, Any]):
     output_var = struct.get('output', 'results')
     detailed = struct.get('detailed', False)
 
-    # Compatibilidad extendida: usa evaluate_ext si existe
+    # Delegar a ml_manager
     if hasattr(ml_manager, 'evaluate_ext'):
          result = ml_manager.evaluate_ext(
             y_true=y_true,
@@ -172,104 +217,24 @@ def _eval(struct: Dict[str, Any], context: Dict[str, Any]):
     context.setdefault('outputs', {})[output_var] = result
     return {'status': 'evaluated', 'metrics': metrics, 'output_var': output_var, 'result': result}
 
-def _train_linear(struct: Dict[str, Any], context: Dict[str, Any]):
-    ds_name = struct.get('dataset', 'data')
-    if 'datasets' not in context or ds_name not in context['datasets']:
-        raise ValueError(f"Dataset '{ds_name}' no encontrado")
 
-    dataset = context['datasets'][ds_name]
-    model_name = struct.get('model_name', 'linear_model')
-    lr = struct.get('learning_rate', 0.01)
-    epochs = struct.get('epochs', 1000)
-
-    meta = ml_manager.train_linear_model(
-        model_name=model_name,
-        dataset=dataset,
-        learning_rate=lr,
-        epochs=epochs
-    )
-
-    try:
-        entry = ml_manager._MODEL_REGISTRY.get(model_name)
-        if entry:
-            _models[model_name] = entry.get('model')
-    except Exception:
-        _models[model_name] = None
-
-    return {'status': 'trained', 'model': model_name, 'meta': meta}
-
-def _train_svm(struct: Dict[str, Any], context: Dict[str, Any]):
-    ds_name = struct.get('dataset', 'data')
-    if 'datasets' not in context or ds_name not in context['datasets']:
-        raise ValueError(f"Dataset '{ds_name}' no encontrado")
-
-    dataset = context['datasets'][ds_name]
-    model_name = struct.get('model_name', 'svm_model')
-    lr = struct.get('learning_rate', 0.001)
-    lambda_param = struct.get('lambda_param', 0.01)
-    epochs = struct.get('epochs', 1000)
-
-    meta = ml_manager.train_svm(
-        model_name=model_name,
-        dataset=dataset,
-        learning_rate=lr,
-        lambda_param=lambda_param,
-        epochs=epochs
-    )
-
-    try:
-        entry = ml_manager._MODEL_REGISTRY.get(model_name)
-        if entry:
-            _models[model_name] = entry.get('model')
-    except Exception:
-        _models[model_name] = None
-
-    return {'status': 'trained', 'model': model_name, 'meta': meta}
-
-def _train_nn(struct: Dict[str, Any], context: Dict[str, Any]):
-    ds_name = struct.get('dataset', 'data')
-    if 'datasets' not in context or ds_name not in context['datasets']:
-        raise ValueError(f"Dataset '{ds_name}' no encontrado")
-
-    dataset = context['datasets'][ds_name]
-    model_name = struct.get('model_name', 'nn_model')
-    hidden_size = struct.get('hidden_size', 4)
-    epochs = struct.get('epochs', 1000)
-    lr = struct.get('lr', 0.01)
-
-    meta = ml_manager.train_neural_network(
-        model_name=model_name,
-        dataset=dataset,
-        hidden_size=hidden_size,
-        epochs=epochs,
-        lr=lr
-    )
-
-    try:
-        entry = ml_manager._MODEL_REGISTRY.get(model_name)
-        if entry:
-            _models[model_name] = entry.get('model')
-    except Exception:
-        _models[model_name] = None
-
-    return {'status': 'trained', 'model': model_name, 'meta': meta}
-
-# =====================================================
+# --------------------------------------------
 # Diccionario de acciones ML soportadas
 
 _ACTION_HANDLERS: Dict[str, Callable] = {
     'dataset': _ensure_dataset,
     'train_dt': _train_dt,
     'train_rf': _train_rf,
+    'train_svm': _train_svm,
+    'train_linear': _train_linear,
+    'train_nn': _train_nn,
+    'train_knn': _train_knn,
     'predict': _predict,
-    'eval': _eval
+    'eval': _eval,
+    'eval_ext': _eval # Alias para compatibilidad
 }
 
-_ACTION_HANDLERS['train_linear'] = _train_linear
-_ACTION_HANDLERS['train_svm'] = _train_svm
-_ACTION_HANDLERS['train_nn'] = _train_nn
-
-# =====================================================
+# -------------------------------------------------
 # Ejecutor de estructuras ML
 
 def execute_structs(structs: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -281,9 +246,12 @@ def execute_structs(structs: List[Dict[str, Any]]) -> Dict[str, Any]:
             action = struct.get('action')
             handler = _ACTION_HANDLERS.get(action)
             if handler is None:
-                raise ValueError(f"Acción desconocida o no soportada: {action}")
+                # Intenta ignorar acciones desconocidas o reportar error suave
+                raise ValueError(f"Acción desconocida o no soportada por adaptador: {action}")
+            
             result = handler(struct, context)
             results.append({'action': action, 'result': result})
+            
         return {
             'success': True,
             'results': results,
@@ -299,70 +267,7 @@ def execute_structs(structs: List[Dict[str, Any]]) -> Dict[str, Any]:
         }
 
 
-# =====================================================
-# struct_to_action — compatibilidad con pipelines externos
-
-def struct_to_action(struct: Dict[str, Any]) -> tuple[str, Callable]:
-    """Convierte una estructura ML en una acción ejecutable."""
-    action = struct.get("action")
-    if action == "dataset":
-        return ("dataset", lambda: struct.get("data"))
-
-    if action == "train_dt":
-        return (
-            "train_dt",
-            lambda: ml_manager.train_decision_tree(
-                dataset=struct.get("dataset"),
-                model_name=struct.get("model_name"),
-                max_depth=struct.get("max_depth"),
-                min_size=struct.get("min_size"),
-                n_features=struct.get("n_features"),
-            ),
-        )
-
-    if action == "train_rf":
-        return (
-            "train_rf",
-            lambda: ml_manager.train_random_forest(
-                dataset=struct.get("dataset"),
-                model_name=struct.get("model_name"),
-                n_trees=struct.get("n_trees"),
-                max_depth=struct.get("max_depth"),
-                min_size=struct.get("min_size"),
-                sample_size=struct.get("sample_size"),
-                n_features=struct.get("n_features"),
-                seed=struct.get("seed"),
-            ),
-        )
-
-    if action == "predict":
-        return (
-            "predict",
-            lambda: ml_manager.predict(
-                name=struct.get("model"),
-                X=struct.get("X"),
-            ),
-        )
-
-    if action in ("eval", "eval_ext"):
-        return (
-            "eval",
-            lambda: ml_manager.evaluate_ext(
-                y_true=struct.get("y_true"),
-                y_pred=struct.get("y_pred"),
-                metrics=struct.get("metrics", ["accuracy"]),
-                output=struct.get("output"),
-                detailed=False,
-            ),
-        )
-
-    if callable(action):
-        return action
-
-    raise TypeError(f"Acción inválida: {type(action).__name__}")
-
-
-# =====================================================
+# -----------------------------------------------------
 # Translator Wrapper — integración con file_handler
 
 try:
@@ -374,10 +279,8 @@ except Exception:
 class Translator:
     """
     Wrapper de traducción universal compatible con file_handler.
-    Permite traducir entre código Python y estructuras de bloques.
     """
     def __init__(self):
-        # Inicializa el traductor real del núcleo si está disponible
         if CoreTranslator is not None:
             self._backend = CoreTranslator()
         else:
@@ -385,26 +288,22 @@ class Translator:
 
     def translate_to_blocks(self, code: str):
         if self._backend is None:
-            raise RuntimeError("Backend de traducción no disponible (core.translator faltante)")
+            raise RuntimeError("Backend de traducción no disponible")
         return self._backend.translate_to_blocks(code)
 
     def translate_to_python(self, blocks):
         if self._backend is None:
-            raise RuntimeError("Backend de traducción no disponible (core.translator faltante)")
-
-        # Aseguramos lista, aunque se reciba un solo bloque
+            raise RuntimeError("Backend de traducción no disponible")
         if isinstance(blocks, dict):
             blocks = [blocks]
-        elif not isinstance(blocks, list):
-            raise ValueError(f"Formato de bloques inválido: {type(blocks)}")
-
         return self._backend.translate_to_python(blocks)
 
-# =====================================================
+# ------------------------------------------
 SUPPORTED_MODELS = [
     "DecisionTree",
     "RandomForest",
     "SVM",
     "LinearModel",
-    "NeuralNetwork"
+    "NeuralNetwork",
+    "KNearestNeighbors"
 ]

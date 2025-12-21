@@ -1,31 +1,26 @@
 """
 EduBot Unified File Handler
-===========================
+=========================================
+Sistema integral para gestión de archivos y persistencia.
+Sincronizado con ml_runtime v2.3 y ml_exporter v2.5.
 
-Sistema integral para gestión de archivos, modelos ML y traducción bidireccional Python ⇄ Bloques visuales.
-
-Incluye:
- - Guardado y carga de proyectos, datasets y modelos (.edubotproj, .edubotml, .json)
- - Exportación e importación segura sin exec()
- - Conversión entre código Python y estructuras visuales (bloques)
- - Exportación inversa: cualquier modelo/dataset se puede representar como bloque visual
-
-Depende de:
-  - core.ml_exporter
-  - core.ml_struct_rules
-  - core.ml_adapter (para traducción Python <-> Bloques)
+Correcciones:
+- save_model: Ajustado para enviar solo model_obj a serialize_model.
+- export_to_blocks: Conectado a la nueva API de visualización.
+- Directorios: Autocreación robusta.
 """
 
 import os
 import json
 #import shutil
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
 
-# Dependencias internas del ecosistema EduBot
+# Dependencias internas
 from storage import ml_exporter
-from core import ml_struct_rules
-from core import ml_adapter
+from core import ml_manager
+#from core import ml_struct_rules
+#from core import ml_adapter
 
 # Directorios base
 PROJECTS_DIR = "./projects"
@@ -34,8 +29,7 @@ TRASH_DIR = "./trash"
 MODELS_DIR = "./models"
 DATASETS_DIR = "./datasets"
 
-
-# ============================================================
+# ---------------------------------------------
 # UTILIDADES BÁSICAS
 
 def ensure_dir_exist():
@@ -43,336 +37,235 @@ def ensure_dir_exist():
     for path in [PROJECTS_DIR, BACKUP_DIR, TRASH_DIR, MODELS_DIR, DATASETS_DIR]:
         os.makedirs(path, exist_ok=True)
 
+def _get_path(directory: str, name: str, extension: str) -> str:
+    """Genera una ruta segura asegurando la extensión."""
+    if not name.endswith(extension):
+        name += extension
+    return os.path.join(directory, name)
 
-def get_path(base: str, filename: str, ext: str) -> str:
-    """Normaliza rutas de archivos por tipo."""
-    if not filename.endswith(ext):
-        filename += ext
-    return os.path.join(base, filename)
+# -------------------------------------------------
+# GESTIÓN DE MODELOS (.edubotml)
 
-
-# ============================================================
-# PROYECTOS EDUCATIVOS
-
-def save_proj(project_data: Dict[str, Any], filename: str) -> bool:
-    """Guarda un proyecto EduBot (.edubotproj)"""
-    ensure_dir_exist()
-    path = get_path(PROJECTS_DIR, filename, ".edubotproj")
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(project_data, f, indent=4, ensure_ascii=False)
-        print(f"[INFO] Proyecto guardado: {path}")
-        return True
-    except Exception as e:
-        print(f"[ERROR] No se pudo guardar el proyecto: {e}")
-        return False
-
-def backup_proj(project_data: Dict[str, Any], filename: str) -> bool:
-    """Guarda una copia de seguridad de un proyecto EduBot (.edubotproj)"""
-    ensure_dir_exist()
-    backup_path = get_path(BACKUP_DIR, filename + "_" + datetime.now().isoformat(), ".edubotproj")
-    try:
-        with open(backup_path, "w", encoding="utf-8") as f:
-            json.dump(project_data, f, indent=4, ensure_ascii=False)
-        print(f"[INFO] Copia de seguridad del proyecto guardada: {backup_path}")
-        return True
-    except Exception as e:
-        print(f"[ERROR] No se pudo guardar la copia de seguridad del proyecto: {e}")
-        return False
-
-def load_proj(filename: str) -> Optional[Dict[str, Any]]:
-    """Carga un proyecto .edubotproj"""
-    ensure_dir_exist()
-    path = get_path(PROJECTS_DIR, filename, ".edubotproj")
-    if not os.path.exists(path):
-        print(f"[WARN] Proyecto no encontrado: {filename}")
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"[ERROR] No se pudo leer el proyecto: {e}")
-        return None
-
-
-def list_projs() -> List[str]:
-    """Lista todos los proyectos existentes"""
-    ensure_dir_exist()
-    return [f[:-11] for f in os.listdir(PROJECTS_DIR) if f.endswith(".edubotproj")]
-
-
-# ============================================================
-# MODELOS ML (MiniML o scikit-learn)
-
-def save_model(model_obj: Any, filename: str, metadata: Optional[dict] = None) -> bool:
+def save_model(model_name: str, filename: str) -> bool:
     """
-    Guarda un modelo ML como .edubotml
-    Incluye metadatos para identificar el framework, modo y fecha.
+    Guarda un modelo entrenado (desde la memoria) al disco.
     """
-    ensure_dir_exist()
-    path = get_path(MODELS_DIR, filename, ".edubotml")
     try:
-        metadata = metadata or {}
-        metadata.update({
+        ensure_dir_exist()
+        
+        # Obtener modelo de memoria
+        model = ml_manager.get_model(model_name)
+        if not model:
+            print(f"[ERROR] Modelo '{model_name}' no encontrado en registro.")
+            return False
+
+        # Serializar
+        model_data = ml_exporter.serialize_model(model)
+        
+        # Agregar metadatos de archivo
+        model_data["_meta"] = {
+            "filename": filename,
             "saved_at": datetime.now().isoformat(),
-            "framework": "MiniML/sklearn hybrid",
-        })
-        data = ml_exporter.serialize_model(model_obj, metadata)
+            "original_name": model_name
+        }
+
+        # Escribir a disco
+        path = _get_path(MODELS_DIR, filename, ".edubotml")
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-        print(f"[INFO] Modelo ML exportado: {path}")
+            json.dump(model_data, f, indent=4)
+            
+        print(f"[INFO] Modelo guardado: {path}")
         return True
+
     except Exception as e:
         print(f"[ERROR] No se pudo guardar el modelo: {e}")
         return False
-    
-def backup_model(model_obj: Any, filename: str, metadata: Optional[dict] = None) -> bool:
-    """
-    Guarda una copia de seguridad de un modelo ML como .edubotml
-    Incluye metadatos para identificar el framework, modo y fecha.
-    """
-    ensure_dir_exist()
-    backup_path = get_path(BACKUP_DIR, filename + "_" + datetime.now().isoformat(), ".edubotml")
-    try:
-        metadata = metadata or {}
-        metadata.update({
-            "saved_at": datetime.now().isoformat(),
-            "framework": "MiniML/sklearn hybrid",
-        })
-        data = ml_exporter.serialize_model(model_obj, metadata)
-        with open(backup_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-        print(f"[INFO] Copia de seguridad del modelo ML exportada: {backup_path}")
-        return True
-    except Exception as e:
-        print(f"[ERROR] No se pudo guardar la copia de seguridad del modelo: {e}")
-        return False
 
-def load_model(filename: str) -> Optional[Any]:
-    """Carga un modelo .edubotml"""
-    ensure_dir_exist()
-    path = get_path(MODELS_DIR, filename, ".edubotml")
-    if not os.path.exists(path):
-        print(f"[WARN] Modelo no encontrado: {filename}")
-        return None
+def load_model(filename: str) -> Any:
+    """
+    Carga un modelo desde disco y lo registra en ml_manager.
+    Retorna el objeto modelo instanciado.
+    """
     try:
+        path = _get_path(MODELS_DIR, filename, ".edubotml")
+        if not os.path.exists(path):
+            print(f"[ERROR] Archivo no encontrado: {path}")
+            return None
+
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+        # Deserializar (Reconstruir objeto Python)
         model = ml_exporter.deserialize_model(data)
-        print(f"[INFO] Modelo ML cargado: {filename}")
-        return model
-    except Exception as e:
-        print(f"[ERROR] No se pudo cargar el modelo ML: {e}")
+        
+        if model:
+            # Registrar en Manager (usando el nombre original o el filename)
+            name = data.get("_meta", {}).get("original_name", filename)
+            # Registrar explícitamente en el manager
+            ml_manager.register_model(name, model)
+            print(f"[INFO] Modelo cargado y registrado como '{name}'")
+            return model
+        
         return None
 
+    except Exception as e:
+        print(f"[ERROR] Falló carga de modelo: {e}")
+        return None
 
-# ============================================================
-# DATASETS
+# ------------------------------------------------
+# GESTIÓN DE DATASETS (.json)
 
-def save_dataset(data: List[List[Any]], filename: str) -> bool:
-    """Guarda un dataset JSON estructurado."""
-    ensure_dir_exist()
-    path = get_path(DATASETS_DIR, filename, ".json")
+def save_dataset(data: List[List[float]], name: str) -> bool:
     try:
+        ensure_dir_exist()
+        path = _get_path(DATASETS_DIR, name, ".json")
+        wrapper = {
+            "type": "dataset",
+            "name": name,
+            "data": data,
+            "created_at": datetime.now().isoformat()
+        }
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-        print(f"[INFO] Dataset guardado: {path}")
+            json.dump(wrapper, f, indent=None) # Minificado para velocidad
         return True
     except Exception as e:
-        print(f"[ERROR] No se pudo guardar el dataset: {e}")
-        return False
-    
-def backup_dataset(data: List[List[Any]], filename: str) -> bool:
-    """Guarda una copia de seguridad de un dataset JSON estructurado."""
-    ensure_dir_exist()
-    backup_path = get_path(BACKUP_DIR, filename + "_" + datetime.now().isoformat(), ".json")
-    try:
-        with open(backup_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-        print(f"[INFO] Copia de seguridad del dataset guardada: {backup_path}")
-        return True
-    except Exception as e:
-        print(f"[ERROR] No se pudo guardar la copia de seguridad del dataset: {e}")
+        print(f"[ERROR] Guardando dataset: {e}")
         return False
 
-def load_dataset(filename: str) -> Optional[List[List[Any]]]:
-    """Carga un dataset JSON estructurado."""
-    ensure_dir_exist()
-    path = get_path(DATASETS_DIR, filename, ".json")
-    if not os.path.exists(path):
-        print(f"[WARN] Dataset no encontrado: {filename}")
-        return None
+def _parse_csv_line(line: str) -> List[float]:
+    """Helper seguro para convertir línea CSV a lista de floats."""
     try:
+        # Divide por comas y limpia espacios
+        parts = [p.strip() for p in line.split(',')]
+        # Intenta convertir todo a float
+        return [float(p) for p in parts if p]
+    except ValueError:
+        # Si falla (ej: es un header 'x1,x2,y'), retorna None
+        return None
+
+def load_dataset(name: str) -> List[List[float]]:
+    """
+    Carga datasets soportando tanto JSON nativo como CSV importado.
+    Prioriza CSV si se indica explícitamente o si existe el archivo.
+    """
+    try:
+        # Limpieza del nombre (quitar extensiones si el usuario las puso)
+        clean_name = name.replace(".json", "").replace(".csv", "")
+        
+        # INTENTO DE CARGA CSV (Prioridad para importaciones externas)
+        csv_path = os.path.join(DATASETS_DIR, clean_name + ".csv")
+        
+        if os.path.exists(csv_path):
+            print(f"[INFO] Detectado dataset CSV: {csv_path}")
+            data = []
+            with open(csv_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                
+            for i, line in enumerate(lines):
+                if not line.strip(): continue # Saltar líneas vacías
+                
+                # Parsear línea
+                row = _parse_csv_line(line)
+                
+                if row is not None:
+                    data.append(row)
+                elif i == 0:
+                    # Si la primera línea falla, asumimos que es Header y no hacemos nada
+                    print(f"[INFO] Header CSV detectado e ignorado: {line.strip()}")
+                else:
+                    print(f"[WARN] Fila {i+1} inválida en CSV (ignorada): {line.strip()}")
+            
+            if not data:
+                print(f"[WARN] El archivo CSV '{csv_path}' existe pero no contiene datos numéricos válidos.")
+                return None
+                
+            return data
+
+        # INTENTO DE CARGA JSON (Formato nativo EduBot)
+        json_path = os.path.join(DATASETS_DIR, clean_name + ".json")
+        if os.path.exists(json_path):
+            with open(json_path, "r", encoding="utf-8") as f:
+                wrapper = json.load(f)
+            return wrapper.get("data", [])
+
+        # No encontrado
+        print(f"[ERROR] Dataset no encontrado (ni .csv ni .json): {clean_name}")
+        return None
+
+    except Exception as e:
+        print(f"[ERROR] Falló carga de dataset '{name}': {e}")
+        return None
+
+# -----------------------------------------------------
+# GESTIÓN DE PROYECTOS (.edubotproj)
+
+def save_proj(project_data: Dict, filename: str) -> bool:
+    try:
+        ensure_dir_exist()
+        path = _get_path(PROJECTS_DIR, filename, ".edubotproj")
+        
+        # Validar estructura mínima
+        if "blocks" not in project_data and "code" not in project_data:
+            print("[WARN] Guardando proyecto vacío.")
+
+        project_data["_meta"] = {"saved_at": datetime.now().isoformat()}
+        
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(project_data, f, indent=4)
+        return True
+    except Exception as e:
+        print(f"[ERROR] Save Project: {e}")
+        return False
+
+def load_proj(filename: str) -> Dict:
+    try:
+        path = _get_path(PROJECTS_DIR, filename, ".edubotproj")
+        if not os.path.exists(path):
+            return None
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        print(f"[ERROR] No se pudo leer el dataset: {e}")
+        print(f"[ERROR] Load Project: {e}")
         return None
 
+def list_projs() -> List[str]:
+    ensure_dir_exist()
+    return [f for f in os.listdir(PROJECTS_DIR) if f.endswith(".edubotproj")]
 
-# ============================================================
-# TRADUCCIÓN BIDIRECCIONAL PYTHON ⇄ BLOQUES
+# -------------------------------------------------------
+# EXPORTACIÓN INVERSA (MODELO -> BLOQUES)
 
-def python_to_blocks(code: str) -> Optional[Dict[str, Any]]:
+def export_to_blocks(model_obj: Any, model_name: str) -> Dict[str, Any]:
     """
-    Convierte código Python a estructura de bloques visuales usando ml_adapter.Translator.
+    Convierte un objeto modelo en memoria a su representación visual (Bloque).
+    Usa la nueva API de ml_exporter.
     """
     try:
-        translator = ml_adapter.Translator()
-        blocks = translator.translate_to_blocks(code)
-        print(f"[INFO] Código Python convertido a bloques visuales.")
-        return {"result": blocks}
+        return ml_exporter.export_model_to_block_structure(model_obj, model_name)
     except Exception as e:
-        print(f"[ERROR] Fallo en traducción Python→Bloques: {e}")
+        print(f"[ERROR] Falló exportación a bloques: {e}")
         return None
 
+# --------------------------------------------------
+# AUTO-EXPORT (Wrapper Genérico)
 
-def blocks_to_python(blocks: List[Dict[str, Any]]) -> Optional[str]:
-    """
-    Convierte bloques visuales a código Python usando ml_adapter.Translator.
-    """
-    try:
-        translator = ml_adapter.Translator()
-        code = translator.translate_to_python(blocks)
-        print(f"[INFO] Bloques visuales convertidos a código Python.")
-        return code
-    except Exception as e:
-        print(f"[ERROR] Fallo en traducción Bloques→Python: {e}")
-        return None
+def auto_export(content: Any, name: str) -> bool:
+    """Detecta el tipo de contenido y lo guarda apropiadamente."""
+    if isinstance(content, dict) and ("blocks" in content or "code" in content):
+        return save_proj(content, name)
+    elif isinstance(content, list):
+        return save_dataset(content, name)
+    # Si es un objeto de modelo desconocido, habría que serializarlo primero
+    # Por seguridad, no guardamos objetos arbitrarios aquí.
+    return False
 
-
-# ============================================================
-# EXPORTACIÓN / IMPORTACIÓN INTELIGENTE
-
-def auto_import(file_path: str) -> Union[Dict[str, Any], List, Any]:
-    """Detecta el tipo de archivo e invoca el método de carga adecuado."""
-    if file_path.endswith(".edubotproj"):
-        return load_proj(os.path.basename(file_path))
-    elif file_path.endswith(".edubotml"):
-        return load_model(os.path.basename(file_path))
-    elif file_path.endswith(".json"):
-        return load_dataset(os.path.basename(file_path))
-    elif file_path.endswith(".py"):
-        with open(file_path, "r", encoding="utf-8") as f:
-            code = f.read()
-        return python_to_blocks(code)
-    else:
-        print(f"[WARN] Tipo de archivo no reconocido: {file_path}")
-        return None
-
-
-def auto_export(obj: Any, filename: str) -> bool:
-    """
-    Guarda automáticamente un objeto (modelo, bloques, código, dataset o proyecto)
-    en el formato adecuado según su tipo.
-    """
-    ensure_dir_exist()
-    try:
-        # Modelos ML (MiniML / sklearn)
-        if hasattr(obj, "fit") or hasattr(obj, "predict"):
-            return save_model(obj, filename)
-
-        # Bloques visuales
-        elif isinstance(obj, dict) and "type" in obj:
-            path = get_path(PROJECTS_DIR, filename, ".edublock.json")
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(obj, f, indent=4, ensure_ascii=False)
-            print(f"[INFO] Bloques exportados a {path}")
-            return True
-
-        # Código Python
-        elif isinstance(obj, str):
-            path = get_path(PROJECTS_DIR, filename, ".py")
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(obj)
-            print(f"[INFO] Código Python guardado en {path}")
-            return True
-
-        # Dataset
-        elif isinstance(obj, list) and all(isinstance(row, list) for row in obj):
-            return save_dataset(obj, filename)
-
-        # Proyecto EduBot
-        elif isinstance(obj, dict):
-            return save_proj(obj, filename)
-
-        else:
-            print(f"[WARN] Tipo de objeto desconocido: {type(obj).__name__}")
-            return False
-
-    except Exception as e:
-        print(f"[ERROR] Error durante auto_export: {e}")
-        return False
-
-
-# ============================================================
-# EXPORTACIÓN INVERSA A BLOQUES
-
-def export_to_blocks(obj: Any, output_file: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Convierte cualquier modelo, dataset o estructura ML a su representación en bloques visuales EduBot.
-    También soporta conversión inversa desde código Python.
-    """
-    ensure_dir_exist()
-    block_struct = None
-
-    if isinstance(obj, dict):
-        if 'model' in obj:
-            obj = obj['model']  # Extrae la instancia real
-        elif all(k in obj for k in ['mode', 'type', 'framework']):
-            # Es meta puro, intenta recuperar model si hay 'model_name'
-            if 'model_name' in obj:
-                from core.ml_manager import get_model
-                obj = get_model(obj['model_name'])
-            else:
-                print("[WARN] Meta dict sin 'model' o 'model_name'. Usando fallback.")
-                struct = obj
-                return {"type": "unsupported", "raw": struct}
-
-    # Caso 1: modelo ML (ampliado para MiniML nativo de EduBot)
-    if any(hasattr(obj, m) for m in ["predict", "fit", "train", "classify", "forward", "run"]):
-        try:
-            struct = ml_exporter.extract_model_structure(obj)
-            if struct:
-                block_struct = ml_struct_rules.struct_to_visual_block(struct)  # Corregido: era struct_to_block
-                print(f"[INFO] Modelo convertido a bloque visual ML.")
-        except Exception as e:
-            print(f"[WARN] No se pudo convertir modelo a estructura visual: {e}")
-
-    # Caso 2: dataset
-    elif isinstance(obj, list) and all(isinstance(row, list) for row in obj):
-        block_struct = {
-            "type": "ml_dataset",
-            "source": "inline",
-            "data": obj,
-            "name": "dataset_auto"
-        }
-        print(f"[INFO] Dataset convertido a bloque visual ML.")
-
-    # Caso 3: código Python -> Bloques
-    elif isinstance(obj, str):
-        block_struct = python_to_blocks(obj)
-
-    elif block_struct is None:
-        print(f"[WARN] Estructura del modelo no reconocida por ml_exporter: {type(obj).__name__}")
-        struct = {"framework": "MiniML", "type": "UnknownModel", "repr": repr(obj)}
-        block_struct = {"type": "unsupported", "raw": struct}
-
-    else:
-        raise TypeError("Objeto no reconocido o no soportado para exportación a bloques.")
-
-    if output_file:
-        path = get_path(PROJECTS_DIR, output_file, ".edublock.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(block_struct, f, indent=4, ensure_ascii=False)
-        print(f"[INFO] Bloque exportado: {path}")
-
-    return block_struct
-
-
-# ============================================================
-# INICIALIZACIÓN
-
-if __name__ == "__main__":
-    ensure_dir_exist()
-    print("[INFO] Sistema unificado EduBot (ML + Traducción + Archivos) inicializado correctamente.")
+def auto_import(path: str) -> Any:
+    """Carga inteligente basada en extensión."""
+    if path.endswith(".edubotproj"):
+        return load_proj(os.path.basename(path).replace(".edubotproj", ""))
+    elif path.endswith(".json"):
+        # Asumir dataset
+        return load_dataset(os.path.basename(path).replace(".json", ""))
+    elif path.endswith(".edubotml"):
+        return load_model(os.path.basename(path).replace(".edubotml", ""))
+    return None

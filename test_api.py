@@ -1,152 +1,93 @@
+"""
+EduBot - Tree Tracing & Diagnostics
+-------------------------------------------------
+Diagnóstico profundo de árboles de decisión.
+Actualizado para soportar Hojas Escalares (Scalar Leaves) del Runtime v2.3+.
+"""
+
 import json
 import time
 import traceback
 from core import ml_runtime, ml_manager
 
 def trace_prediction(node, row, depth=0):
-    """Traza el recorrido de una predicción a través del árbol."""
+    """
+    Traza el recorrido de una predicción a través del árbol.
+    Soporta nodos diccionario y hojas escalares optimizadas.
+    """
     indent = "  " * depth
     if node is None:
-        return f"{indent}❌ Nodo nulo — la predicción no pudo continuar.\n"
+        return f"{indent}❌ Nodo nulo — predicción abortada.\n"
 
-    # Si el nodo es una hoja, devolvemos su valor
-    if not isinstance(node, dict) or ("index" not in node and "value" in node):
-        return f"{indent}🌿 Hoja alcanzada → predicción final: {node}\n"
+    if isinstance(node, (int, float)):
+        return f"{indent}🌿 Hoja alcanzada (Escalar) → valor: {node}\n"
+    # ---------------------------------------------------------------
 
-    if "index" not in node or "value" not in node:
-        return f"{indent}⚠️ Nodo malformado: {node}\n"
-
-    i = node["index"]
-    v = node["value"]
-
-    # Validación de seguridad
-    if i >= len(row):
-        return f"{indent}❌ Índice fuera de rango (index={i}, row_len={len(row)})\n"
-
-    cond = row[i] < v
-    branch = "izquierda" if cond else "derecha"
-    log = f"{indent}🔎 Nodo (index={i}, value={v}) → row[{i}]={row[i]} → rama {branch}\n"
-
-    # Descenso recursivo
-    next_node = node["left"] if cond else node["right"]
-    return log + trace_prediction(next_node, row, depth + 1)
-
-
-def inspect_tree(node, depth=0):
-    """Recorre e imprime la estructura del árbol."""
-    indent = "  " * depth
-    if node is None:
-        return f"{indent}❌ Nodo vacío\n"
-
+    # Detección de hoja formato antiguo (Diccionario)
     if isinstance(node, dict):
-        lines = [f"{indent}🌳 Nodo nivel {depth}: índice={node.get('index')} valor={node.get('value')}"]
-        if "left" in node or "right" in node:
-            lines.append(f"{indent}├── Izquierda:")
-            lines.append(inspect_tree(node.get("left"), depth + 1))
-            lines.append(f"{indent}├── Derecha:")
-            lines.append(inspect_tree(node.get("right"), depth + 1))
-        return "\n".join(lines)
-    else:
-        return f"{indent}🌿 Hoja: {node}\n"
+        # Si no tiene 'left' o 'index' es -1, es una hoja legacy o wrapper
+        if node.get("index", -1) == -1 or "left" not in node:
+            val = node.get("value", "N/A")
+            return f"{indent}🌿 Hoja alcanzada (Dict) → valor: {val}\n"
+        
+        # Es un nodo de decisión
+        index = node.get("index")
+        value = node.get("value") # Umbral
+        
+        # Validación de integridad
+        if index is None or value is None:
+             return f"{indent}❓ Nodo corrupto (sin index/value): {node}\n"
+
+        # Validación de datos de entrada
+        if index >= len(row):
+            return f"{indent}❌ Índice fuera de rango (idx={index}, len={len(row)})\n"
+
+        # Lógica de recorrido
+        cond = row[index] <= value # Usamos <= para coincidir con runtime
+        branch = "izquierda" if cond else "derecha"
+        log = f"{indent}🔎 Nodo (idx={index}, umbral={value:.2f}) → val={row[index]} → {branch}\n"
+
+        # Descenso recursivo
+        next_node = node["left"] if cond else node["right"]
+        return log + trace_prediction(next_node, row, depth + 1)
+
+    return f"{indent}❓ Formato de nodo desconocido: {type(node)}\n"
 
 
 def run_pipeline(mode="classification"):
-    print(f"\n--- 🧩 Ejecutando diagnóstico para modo: {mode.upper()} ---\n")
-
-    # Dataset base
-    if mode == "classification":
-        data = [
-            [2.7, 2.5, 0],
-            [1.3, 3.5, 0],
-            [3.5, 1.4, 1],
-            [3.9, 4.0, 1]
-        ]
-        X_test = [[2.5, 2.3], [3.7, 3.9]]
-    else:
-        data = [
-            [1.0, 2.0, 2.1],
-            [2.0, 3.0, 3.9],
-            [3.0, 4.0, 6.1],
-            [4.0, 5.0, 8.2]
-        ]
-        X_test = [[2.5, 3.5], [3.5, 4.5]]
-
-    start = time.time()
-    print("🧠 Entrenando modelo...")
-
+    print(f"\n🚀 Iniciando diagnóstico de pipeline: {mode.upper()}")
+    
     try:
-        result = ml_manager.train_decision_tree(
-            model_name=f"tree_{mode}",
-            dataset=data,
-            max_depth=3,
-            min_size=1,
-            backend="mini"  # <-- FORZAR EL BACKEND 'MINI' PARA DEPURACIÓN
-        )
-        print("✅ Entrenamiento completado:", result)
+        # Datos sintéticos
+        if mode == "classification":
+            # Dataset OR gate: x1=0,x2=1 -> 1
+            data = [[0,0,0], [0,1,1], [1,0,1], [1,1,1]]
+            model = ml_runtime.DecisionTreeClassifier(max_depth=3)
+            test_row = [0, 1] # Esperado: 1
+        else:
+            # Dataset escalón
+            data = [[1.0, 1.0], [2.0, 2.0], [3.0, 3.0]]
+            model = ml_runtime.DecisionTreeRegressor(max_depth=3)
+            test_row = [1.5] # Esperado: ~1.0 o ~2.0
+
+        model.fit(data)
+        print("✅ Modelo entrenado en memoria.")
+        
+        # Probar trazado
+        print("📜 Trazado de predicción:")
+        if hasattr(model, 'root') and model.root is not None:
+            print(trace_prediction(model.root, test_row))
+            
+            # Predicción real para confirmar
+            pred = model.predict([test_row])[0]
+            print(f"✅ Predicción ejecutada: {pred}")
+        else:
+            print("⚠️ El modelo no tiene estructura 'root' accesible.")
+            
     except Exception as e:
-        print("❌ Error durante el entrenamiento:", e)
+        print(f"❌ Error en pipeline: {e}")
         traceback.print_exc()
-        return None
-
-    model_info = ml_manager._MODEL_REGISTRY.get(f"tree_{mode}")
-    if not model_info:
-        print("❌ Modelo no encontrado en el registro global.")
-        return None
-
-    model = model_info["model"]
-    print("\n📊 Estructura del árbol raíz:\n")
-    print(inspect_tree(model.root))
-
-    preds = []
-    print("\n🔍 Trazando predicciones una a una:\n")
-
-    for i, row in enumerate(X_test):
-        print(f"📘 Ejemplo #{i + 1} → {row}")
-        try:
-            trace_log = trace_prediction(model.root, row)
-            print(trace_log)
-            pred = None
-            if hasattr(model, "predict_tree"):
-                pred = model.predict_tree(model.root, row)
-            elif hasattr(model, "predict_tree_regression"):
-                pred = model.predict_tree_regression(model.root, row)
-            else:
-                # Fallback al método estándar predict()
-                pred = model.predict([row])[0]
-            print(f"✅ Predicción final: {pred}\n")
-            preds.append(pred)
-        except Exception as e:
-            print(f"❌ Error al predecir fila {i}: {e}")
-            traceback.print_exc()
-            preds.append(None)
-
-    duration = time.time() - start
-    return {
-        "mode": mode,
-        "predictions": preds,
-        "duration": duration,
-        "tree_type": model_info["type"]
-    }
-
-
-def main():
-    print("=" * 60)
-    print("🧪 DIAGNÓSTICO AVANZADO MINI ML - EduBot ML Runtime")
-    print("=" * 60)
-
-    results = []
-    for m in ["classification", "regression"]:
-        res = run_pipeline(m)
-        if res:
-            results.append(res)
-
-    print("\n\n--- RESULTADOS FINALES ---\n")
-    print(json.dumps(results, indent=2))
-
-    with open("ml_debug_log.txt", "w", encoding="utf-8") as f:
-        f.write(json.dumps(results, indent=2))
-    print("\n🗂️ Log detallado guardado como 'ml_debug_log.txt'")
-
 
 if __name__ == "__main__":
-    main()
+    run_pipeline("classification")
+    run_pipeline("regression")

@@ -10,7 +10,7 @@ venv/
 .venv/
 
 # === Data and JSON archives ===
-datasets/*.json
+datasets/*.csv
 models/
 *.json
 logs/*.log
