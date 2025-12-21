@@ -9,7 +9,8 @@ de backend de EduBot en server.py.
 
 import eel
 import os
-#import json
+import shutil
+import json
 #import yaml
 from datetime import datetime
 
@@ -58,15 +59,100 @@ def api_save_project(data, filename):
 
 @eel.expose
 def api_load_project(filename):
-    """Carga un proyecto guardado"""
+    """
+    Carga inteligente: Busca primero un Proyecto Python (.edubotproj),
+    y si no existe, busca un Modelo ML (.edubotml).
+    """
     try:
-        data = file_handler.load_proj(filename)
-        if data:
-            return data # Devuelve el JSON directo al frontend
-        else:
-            return {'error': 'Proyecto no encontrado o ilegible'}
+        # Limpieza del nombre (quitar extensiones si el usuario las puso)
+        clean_name = filename.replace('.edubotproj', '').replace('.edubotml', '')
+        
+        # INTENTAR CARGAR PROYECTO PYTHON
+        proj_path = os.path.join("projects", f"{clean_name}.edubotproj")
+        if os.path.exists(proj_path):
+            with open(proj_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            # Asegurar consistencia
+            if 'mode' not in data: data['mode'] = 'python'
+            data['_found_name'] = clean_name # Meta-dato para el frontend
+            return data
+
+        # INTENTAR CARGAR MODELO ML
+        model_path = os.path.join("models", f"{clean_name}.edubotml")
+        if os.path.exists(model_path):
+            with open(model_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            # Asegurar consistencia
+            if 'mode' not in data: data['mode'] = 'ml'
+            data['_found_name'] = clean_name
+            return data
+
+        # Si no se encuentra
+        return {'error': f'No se encontró "{clean_name}" en Proyectos ni en Modelos.'}
+
     except Exception as e:
-        return {'error': str(e)}
+        return {'error': f"Error de lectura: {str(e)}"}
+
+@eel.expose
+def api_save_model_file(data, filename):
+    """
+    Guarda la arquitectura del modelo ML (nodos/conexiones) 
+    como archivo .edubotml en la carpeta 'models'.
+    """
+    try:
+        # Asegurar extensión
+        if not filename.endswith('.edubotml'):
+            filename += '.edubotml'
+        
+        models_dir = "models"
+        if not os.path.exists(models_dir):
+            os.makedirs(models_dir)
+            
+        full_path = os.path.join(models_dir, filename)
+        
+        # Guardamos usando el file_handler genérico o escritura directa
+        # Aquí usamos escritura directa para asegurar el path
+        import json
+        with open(full_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4)
+            
+        return {'success': True, 'path': full_path}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_move_to_trash(filename, file_type):
+    """
+    Mueve un proyecto o modelo a la carpeta 'trash'.
+    file_type: 'project' (.edubotproj) o 'model' (.edubotml)
+    """
+    try:
+        trash_dir = "trash"
+        if not os.path.exists(trash_dir):
+            os.makedirs(trash_dir)
+            
+        # Determinar directorio origen y extensión
+        if file_type == 'model':
+            src_dir = "models"
+            ext = ".edubotml"
+        else:
+            src_dir = "projects" # Asumiendo que file_handler usa esta carpeta base
+            ext = ".edubotproj"
+            
+        if not filename.endswith(ext):
+            filename += ext
+            
+        src_path = os.path.join(src_dir, filename)
+        dst_path = os.path.join(trash_dir, filename)
+        
+        if os.path.exists(src_path):
+            shutil.move(src_path, dst_path)
+            return {'success': True}
+        else:
+            return {'success': False, 'error': 'Archivo no encontrado'}
+            
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
 
 # TRADUCCIÓN Y ESTRUCTURAS
 @eel.expose

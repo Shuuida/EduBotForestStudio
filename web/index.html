@@ -93,6 +93,103 @@
         
         /* Partículas */
         .data-particle { fill: #ffffff; filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)); }
+
+        /* SIDEBAR REFINADO */
+        /* Apuntamos al contenedor lateral por sus clases de Tailwind para darle más profundidad */
+        .w-64.bg-gray-900.border-r.border-gray-700 {
+            background: linear-gradient(to bottom, #111827, #0a0a0a); /* Degradado sutil oscuro */
+            border-right: 1px solid #1f2937 !important; /* Borde más suave */
+            box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.03); /* Sutil luz en el borde derecho */
+        }
+        /* Refinamos el encabezado del sidebar ("MACHINE LEARNING" / "PYTHON") */
+        .w-64 .border-b.border-gray-800 {
+            background: #111827;
+            border-bottom-color: #1f2937 !important;
+            color: #9ca3af !important; /* Texto gris más claro */
+            letter-spacing: 0.05em;
+            text-shadow: 0 1px 1px rgba(0,0,0,0.5);
+        }
+
+        /* CONTROLES DE ZOOM (REACT FLOW) - ARREGLO Y ESTÉTICA */
+        /* Contenedor principal de los botones */
+        .react-flow__controls {
+            background-color: #1f2937 !important; /* bg-gray-800 */
+            border: 1px solid #374151 !important; /* border-gray-700 */
+            border-radius: 8px !important; /* Bordes redondeados modernos */
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2) !important; /* Sombra suave */
+            margin-bottom: 16px; /* Separación del borde inferior */
+            margin-left: 16px;   /* Separación del borde izquierdo */
+        }
+
+        /* Botones individuales (+, -, fit) */
+        .react-flow__controls-button {
+            background-color: transparent !important;
+            border-bottom: 1px solid #374151 !important; /* Separadores */
+            border-radius: 0 !important;
+            color: #9ca3af !important; /* text-gray-400 (Color base de los iconos) */
+            transition: all 0.2s ease;
+            width: 32px !important;
+            height: 32px !important;
+        }
+
+        /* Quitar el borde inferior del último botón */
+        .react-flow__controls-button:last-child {
+            border-bottom: none !important;
+        }
+
+        /* Efecto Hover */
+        .react-flow__controls-button:hover {
+            background-color: #374151 !important; /* bg-gray-700 */
+            color: #ffffff !important; /* Icono blanco al pasar el mouse */
+        }
+
+        /* Forzamos a los SVGs internos a usar el color de texto definido arriba */
+        .react-flow__controls-button svg {
+            fill: currentColor !important;
+            stroke: currentColor !important;
+            /* Aseguramos un tamaño correcto */
+            width: 18px;
+            height: 18px;
+            max-width: none;
+            max-height: none;
+        }
+        /* Ajuste específico para el icono de "Fit View" que a veces se ve pequeño */
+        .react-flow__controls-fitview svg {
+             transform: scale(1.1);
+        }
+
+        /* --- SCROLLBARS PERSONALIZADOS --- */
+        /* Esto afecta a toda la aplicación webkit (Chrome/Edge/Eel) */
+        
+        /* El ancho de la barra */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px; /* Para scroll horizontal */
+        }
+
+        /* El carril de fondo (Track) */
+        ::-webkit-scrollbar-track {
+            background: #111827; /* Mismo color que el fondo de la app */
+            border-left: 1px solid #1f2937; /* Sutil borde separador */
+        }
+
+        /* La barra que se mueve (Thumb) */
+        ::-webkit-scrollbar-thumb {
+            background-color: #374151; /* Gris medio (border-gray-700) */
+            border-radius: 4px;       /* Bordes redondeados */
+            border: 2px solid #111827; /* Espacio alrededor para que parezca estar flotando */
+        }
+
+        /* Cuando pasas el mouse por encima */
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: #4b5563; /* Gris más claro al interactuar */
+        }
+
+        /* Esquina donde se juntan scroll vertical y horizontal */
+        ::-webkit-scrollbar-corner {
+            background: #111827;
+        }
     </style>
 </head>
 <body>
@@ -101,7 +198,7 @@
         import React, { useState, useEffect, useCallback, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
         import ReactFlow, { Background, Controls, addEdge, Handle, useNodesState, useEdgesState, ReactFlowProvider } from 'reactflow';
-        import { Database, GitBranch, Users, Brain, PlayCircle, Sprout, Cpu, Play, Terminal, Trash2, Save, FolderOpen, Code, Layers, FileJson, ArrowRight, Variable, FunctionSquare, Repeat, Split, XCircle, Keyboard, RefreshCw, Calculator, CheckSquare, ArrowLeft, Activity, Box, Package, AlertTriangle } from 'lucide-react';
+        import { Database, GitBranch, Users, Brain, PlayCircle, Sprout, Cpu, Play, Terminal, Trash2, Save, FolderOpen, Code, Layers, FileJson, ArrowRight, Variable, FunctionSquare, Repeat, Split, XCircle, Keyboard, RefreshCw, Calculator, CheckSquare, ArrowLeft, Activity, Box, Package, AlertTriangle, FileWarning } from 'lucide-react';
 
         // 1. UTILIDADES Y LÓGICA (REFACTORIZADO: TOPOLOGICAL SORT + SCOPE NESTING)
         const serializeNodesLinear = (nodes, edges, mode) => {
@@ -430,15 +527,13 @@
 
             // 2. RANDOM FOREST
             const ForestViz = () => {
-                // Configuración de la cuadrícula
                 const trees = [0, 1, 2];
-                const treeX = 60;   // Posición X de los árboles
-                const voteBoxX = 380; // Posición X de la caja de votos
-                const voteInputX = voteBoxX - 20; // Punto de entrada visual a la caja
+                const treeX = 60;
+                const voteBoxX = 380;
+                const voteInputX = voteBoxX - 20;
                 
                 return (
                     <svg className="sim-svg" viewBox="0 0 500 250">
-                        {/* Definiciones para degradados y efectos reutilizables */}
                         <defs>
                             <linearGradient id="treeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                                 <stop offset="0%" stopColor="#10b981" stopOpacity="0.8" />
@@ -451,101 +546,64 @@
                         </defs>
 
                         {trees.map((t, i) => {
-                            // Cálculo dinámico de posiciones para distribución perfecta
-                            const yBase = 50 + i * 75; 
+                            const yBase = 50 + i * 75;
                             const pathId = `tree-flow-${i}`;
-                            
-                            // Coordenadas internas del "Mini-Árbol"
                             const rootX = treeX;
                             const level1X = treeX + 35;
-                            const level2X = treeX + 70; // Puntas de las ramas (hojas)
+                            const level2X = treeX + 70;
+
+                            // LOGICA DE SIMULACIÓN:
+                            // Decidimos aleatoriamente si este árbol específico toma el camino True (Arriba) o False (Abajo).
+                            // Usamos el índice 'i' para que la "aleatoriedad" sea consistente y no parpadee en cada render.
+                            // En una app real, esto podría venir de los datos reales del modelo.
+                            const decisionPath = (i % 2 === 0); // Ejemplo: Árboles pares van arriba, impares abajo.
+                            // O usa: Math.random() > 0.5 (pero cuidado con el re-render en React)
+                            
+                            // Definimos la coordenada Y de salida basada en la decisión
+                            const branchY = decisionPath ? yBase - 25 : yBase + 25; 
 
                             return (
                                 <g key={i} className={`sim-node ${stateClass}`}>
-                                    {/* --- ESTRUCTURA DEL ÁRBOL (VISUALIZACIÓN ESTÁTICA) --- */}
+                                    {/* A. ESTRUCTURA ESTÁTICA (El circuito siempre visible) */}
+                                    <polyline points={`${rootX},${yBase} ${level1X},${yBase} ${level1X},${yBase-15} ${level2X},${yBase-25}`} className={`sim-link ${stateClass}`} fill="none" opacity="0.3" />
+                                    <polyline points={`${rootX},${yBase} ${level1X},${yBase} ${level1X},${yBase+15} ${level2X},${yBase+25}`} className={`sim-link ${stateClass}`} fill="none" opacity="0.3" />
                                     
-                                    {/* Raíz y Conexiones Internas (Dendrograma Tech) */}
-                                    {/* Ramas Superiores e Inferiores dibujadas con polilíneas para estilo 'Circuit' */}
-                                    <polyline 
-                                        points={`${rootX},${yBase} ${level1X},${yBase} ${level1X},${yBase-15} ${level2X},${yBase-25}`} 
-                                        className={`sim-link ${stateClass}`} fill="none" opacity="0.5"
-                                    />
-                                    <polyline 
-                                        points={`${rootX},${yBase} ${level1X},${yBase} ${level1X},${yBase+15} ${level2X},${yBase+25}`} 
-                                        className={`sim-link ${stateClass}`} fill="none" opacity="0.5"
-                                    />
-                                    
-                                    {/* Nodos del Árbol (Puntos de Decisión) */}
-                                    {/* Raíz (Input del árbol) */}
                                     <circle cx={rootX} cy={yBase} r="14" className={active ? "fill-gray-800 stroke-green-500" : "fill-gray-900 stroke-gray-600"} strokeWidth="2" />
-                                    <g transform={`translate(${rootX - 8}, ${yBase - 8})`}>
-                                        <Sprout size={16} className={active ? "text-green-400" : "text-gray-500"} />
-                                    </g>
-
-                                    {/* Nodos Hoja (Salidas del árbol individual) */}
+                                    <g transform={`translate(${rootX - 8}, ${yBase - 8})`}><Sprout size={16} className={active ? "text-green-400" : "text-gray-500"} /></g>
+                                    
+                                    {/* Nodos Hoja visuales */}
                                     <circle cx={level2X} cy={yBase - 25} r="3" className="fill-gray-500" opacity="0.6" />
                                     <circle cx={level2X} cy={yBase + 25} r="3" className="fill-gray-500" opacity="0.6" />
 
-                                    {/* --- FLUJO DE DATOS (ANIMACIÓN) --- */}
-                                    
-                                    {/* Path de Simulación: Raíz -> Decisión -> Hoja Superior -> Convergencia al Voto */}
-                                    {/* Usamos curvas Bezier (C) para crear un efecto de "cableado orgánico" hacia el centro */}
-                                    <path id={pathId} 
-                                          d={`M ${rootX} ${yBase} 
-                                              L ${level1X} ${yBase} 
-                                              L ${level2X} ${yBase - 25} 
-                                              C ${level2X + 50} ${yBase - 25}, ${voteInputX - 50} 125, ${voteInputX} 125`} 
-                                          fill="none" stroke="none" />
-                                    
-                                    {/* Visualización del cable de conexión (Solo la parte que sale del árbol hacia el voto) */}
-                                    <path d={`M ${level2X} ${yBase - 25} C ${level2X + 50} ${yBase - 25}, ${voteInputX - 50} 125, ${voteInputX} 125`} 
+                                    {/* B. CABLEADO DINÁMICO (El cable que se "ilumina" según la decisión) */}
+                                    {/* Solo dibujamos el cable de conexión para la rama ACTIVA */}
+                                    <path d={`M ${level2X} ${branchY} C ${level2X + 50} ${branchY}, ${voteInputX - 50} 125, ${voteInputX} 125`} 
                                           className={`sim-link ${stateClass}`} 
                                           strokeDasharray={stateClass === 'idle' ? "4" : "0"} 
                                           opacity={0.4} />
 
-                                    {/* Partícula de Datos (El "Voto" viajando) */}
+                                    {/* C. CAMINO DE ANIMACIÓN (Invisible, guía la partícula) */}
+                                    {/* La partícula viaja desde la raíz hasta la rama elegida (branchY) y luego al voto */}
+                                    <path id={pathId} 
+                                          d={`M ${rootX} ${yBase} 
+                                              L ${level1X} ${yBase} 
+                                              L ${level2X} ${branchY} 
+                                              C ${level2X + 50} ${branchY}, ${voteInputX - 50} 125, ${voteInputX} 125`} 
+                                          fill="none" stroke="none" />
+                                    
                                     <DataParticle pathId={pathId} delay={i * 0.3} duration={2.2} />
                                 </g>
                             )
                         })}
                         
-                        {/* --- NODO DE AGREGACIÓN (VOTE BOX) --- */}
+                        {/* NODO VOTE (Sin cambios, recibe todo) */}
                         <g className={`sim-node ${stateClass}`}>
-                            {/* Conector de entrada (El "Embudo") */}
                             <path d={`M ${voteInputX} 125 L ${voteBoxX} 125`} stroke={active ? "#10b981" : "#4b5563"} strokeWidth="3" />
                             <circle cx={voteInputX} cy="125" r="4" fill={active ? "#10b981" : "#4b5563"} />
-
-                            {/* Caja Principal del Procesador */}
-                            <rect x={voteBoxX} y="90" width="80" height="70" rx="6" 
-                                  className={active ? "fill-gray-900 stroke-green-500" : "fill-gray-900 stroke-gray-600"} 
-                                  strokeWidth="2" 
-                                  filter={active ? "url(#glow-effect)" : ""}
-                            />
-                            
-                            {/* Detalles UI internos ("Pantalla" del procesador) */}
+                            <rect x={voteBoxX} y="90" width="80" height="70" rx="6" className={active ? "fill-gray-900 stroke-green-500" : "fill-gray-900 stroke-gray-600"} strokeWidth="2" filter={active ? "url(#glow-effect)" : ""} />
                             <rect x={voteBoxX + 10} y="100" width="60" height="30" rx="2" fill="#111827" stroke="none" />
-                            
-                            {/* Barras de "Carga/Proceso" animadas */}
-                            {active && (
-                                <g>
-                                    <rect x={voteBoxX + 15} y="108" width="50" height="4" rx="1" fill="#064e3b" />
-                                    <rect x={voteBoxX + 15} y="108" width="35" height="4" rx="1" fill="#10b981">
-                                        <animate attributeName="width" values="10;50;30;45" dur="1.5s" repeatCount="indefinite" />
-                                    </rect>
-                                    
-                                    <rect x={voteBoxX + 15} y="118" width="50" height="4" rx="1" fill="#064e3b" />
-                                    <rect x={voteBoxX + 15} y="118" width="20" height="4" rx="1" fill="#34d399">
-                                        <animate attributeName="width" values="0;40;15;50" dur="2s" repeatCount="indefinite" />
-                                    </rect>
-                                </g>
-                            )}
-
-                            {/* Texto de Etiqueta */}
-                            <text x={voteBoxX + 40} y="148" fontSize="10" fill={active ? "#d1fae5" : "#6b7280"} textAnchor="middle" fontWeight="bold" letterSpacing="1px">
-                                CONSENSUS
-                            </text>
-                            
-                            {/* Etiqueta de Salida */}
+                            {active && (<g><rect x={voteBoxX + 15} y="108" width="50" height="4" rx="1" fill="#064e3b" /><rect x={voteBoxX + 15} y="108" width="35" height="4" rx="1" fill="#10b981"><animate attributeName="width" values="10;50;30;45" dur="1.5s" repeatCount="indefinite" /></rect><rect x={voteBoxX + 15} y="118" width="50" height="4" rx="1" fill="#064e3b" /><rect x={voteBoxX + 15} y="118" width="20" height="4" rx="1" fill="#34d399"><animate attributeName="width" values="0;40;15;50" dur="2s" repeatCount="indefinite" /></rect></g>)}
+                            <text x={voteBoxX + 40} y="148" fontSize="10" fill={active ? "#d1fae5" : "#6b7280"} textAnchor="middle" fontWeight="bold" letterSpacing="1px">CONSENSUS</text>
                              <text x={voteBoxX + 40} y="80" fontSize="9" fill="#4b5563" textAnchor="middle">AGGREGATION</text>
                         </g>
                     </svg>
@@ -802,7 +860,7 @@
                     <div className="space-y-3">
                         <button onClick={() => onNew('ml')} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FileJson className="text-blue-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Nuevo Proyecto ML</div><div className="text-xs text-gray-400">Crear modelos de IA visualmente</div></div></button>
                         <button onClick={() => onNew('python')} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><Code className="text-yellow-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Fundamentos Python</div><div className="text-xs text-gray-400">Aprender lógica de programación</div></div></button>
-                        <button onClick={onOpen} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FolderOpen className="text-purple-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Abrir Proyecto</div><div className="text-xs text-gray-400">Cargar archivo .edubotproj</div></div></button>
+                        <button onClick={onOpen} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FolderOpen className="text-purple-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Abrir Proyecto</div><div className="text-xs text-gray-400">Cargar proyectos o Modelos</div></div></button>
                     </div>
                 </div>
             </div>
@@ -887,7 +945,7 @@
             smart: SmartEdge,
         };
 
-        const EditorContent = ({ mode, onBack, initialNodes, initialEdges }) => {
+        const EditorContent = ({ mode, onBack, initialNodes, initialEdges, currentName, setCurrentName }) => {
             const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes || []);
             const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges || []);
             const [reactFlowInstance, setReactFlowInstance] = useState(null);
@@ -1040,10 +1098,62 @@
                 } catch(e) { addLog(e, 'error'); }
             };
 
+            // --- NUEVA LÓGICA DE GUARDADO INTELIGENTE ---
             const saveProject = async () => {
-                const name = prompt("Nombre:"); if(!name) return;
+                let name = currentName;
+                if (!name) {
+                    name = prompt("Nombre para guardar:");
+                    if (!name) return;
+                }
+
                 const data = { blocks: nodes.map(n=>({...n, type:n.type})), edges, mode };
-                try { await window.eel.api_save_project(data, name)(); addLog("Guardado", 'success'); } catch(e) { addLog(e, 'error'); }
+                
+                try {
+                    let res;
+                    if (mode === 'ml') {
+                        // GUARDADO DE MODELO (.edubotml)
+                        res = await window.eel.api_save_model_file(data, name)();
+                        if (res.success) addLog(`Modelo ML guardado: ${name}.edubotml`, 'success');
+                    } else {
+                        // GUARDADO DE PROYECTO PYTHON (.edubotproj)
+                        res = await window.eel.api_save_project(data, name)();
+                        if (res.success) addLog(`Proyecto guardado: ${name}.edubotproj`, 'success');
+                    }
+
+                    if (res.success) {
+                        setCurrentName(name); // Actualizamos el nombre en la UI
+                    } else {
+                        addLog(`Error guardando: ${res.error}`, 'error');
+                    }
+                } catch(e) { addLog(e, 'error'); }
+            };
+
+            // --- NUEVA LÓGICA DE ELIMINAR PROYECTO (TRASH) ---
+            const trashProject = async () => {
+                if (!currentName) {
+                    // Si no tiene nombre (no guardado), solo limpiamos el lienzo
+                    if(confirm("El proyecto no está guardado. ¿Deseas descartar todos los cambios y limpiar el editor?")) {
+                        setNodes([]); setEdges([]); setLogs([]);
+                        addLog("Editor limpiado (Borrador descartado)", 'warn');
+                    }
+                    return;
+                }
+
+                if (confirm(`¿ESTÁS SEGURO?\n\nEl proyecto '${currentName}' será enviado a la Papelera de Reciclaje.\nEsta acción cerrará el editor.`)) {
+                    try {
+                        const fileType = mode === 'ml' ? 'model' : 'project';
+                        const res = await window.eel.api_move_to_trash(currentName, fileType)();
+                        
+                        if (res.success) {
+                            alert("Proyecto enviado a la papelera exitosamente.");
+                            onBack(); // Regresar al inicio
+                        } else {
+                            alert(`Error al eliminar: ${res.error}`);
+                        }
+                    } catch (e) {
+                        alert(`Error de sistema: ${e}`);
+                    }
+                }
             };
 
             return (
@@ -1051,6 +1161,7 @@
                     <div className="h-14 bg-gray-900 border-b border-gray-700 flex items-center px-4 justify-between shrink-0">
                         <div className="flex items-center gap-4">
                             <button onClick={onBack} className="text-gray-400 hover:text-white flex items-center gap-1 text-sm font-bold"><ArrowLeft size={16}/> Inicio</button>
+                            <div className="text-xs text-gray-500 font-mono"> {currentName ? `Archivo: ${currentName}${mode==='ml'?'.edubotml':'.edubotproj'}` : '• Sin Guardar'}</div>
                             <div className="h-6 w-px bg-gray-700"></div>
                             <div className="flex bg-gray-800 rounded p-1">
                                 <button onClick={() => setActiveTab('forest')} className={`px-3 py-1 rounded text-xs font-medium ${activeTab==='forest'?'bg-gray-600 text-white':'text-gray-400'}`}>Bosque</button>
@@ -1061,6 +1172,7 @@
                         <div className="flex gap-2">
                             <button onClick={deleteSelected} className="p-2 rounded hover:bg-red-900/30 text-red-400"><Trash2 size={18}/></button>
                             <button onClick={saveProject} className="p-2 rounded hover:bg-blue-900/30 text-blue-400"><Save size={18}/></button>
+                            <button onClick={trashProject} title="Mover Proyecto a Papelera" className="p-2 rounded hover:bg-red-900/40 text-red-500 transition-colors border border-transparent hover:border-red-500/50"><FileWarning size={18}/></button>
                             <div className="h-6 w-px bg-gray-700 mx-1"></div>
                             {mode==='ml' && (<><button onClick={checkMemory} className="bg-gray-800 px-3 py-1.5 rounded text-xs text-gray-300 border border-gray-700 hover:border-gray-600 flex gap-2"><Cpu size={14}/> Memoria</button><button onClick={exportToC} className="bg-gray-800 px-3 py-1.5 rounded text-xs text-gray-300 border border-gray-700 hover:border-gray-600 flex gap-2"><Cpu size={14}/> Exportar C</button></>)}
                             <button onClick={runPipeline} className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded text-sm font-semibold flex items-center gap-2 shadow-lg"><Play size={16} fill="currentColor"/> Ejecutar</button>
@@ -1114,10 +1226,10 @@
             );
         };
 
-        const Editor = ({ mode, onBack, initialNodes, initialEdges }) => {
+        const Editor = (props) => {
             return (
                 <ReactFlowProvider>
-                    <EditorContent mode={mode} onBack={onBack} initialNodes={initialNodes} initialEdges={initialEdges} />
+                    <EditorContent {...props} />
                 </ReactFlowProvider>
             );
         };
@@ -1127,12 +1239,43 @@
             const [view, setView] = useState('welcome');
             const [mode, setMode] = useState('ml');
             const [initialData, setInitialData] = useState(null);
-            const handleNewProject = (selectedMode) => { setMode(selectedMode); setInitialData(null); setView('editor'); };
-            const handleOpenProject = async () => {
-                const name = prompt("Nombre proyecto:"); if(!name) return;
-                try { const data = await window.eel.api_load_project(name)(); if(data) { setMode(data.mode||'ml'); setInitialData(data); setView('editor'); } } catch(e) { console.error(e); }
+            const [currentName, setCurrentName] = useState(null); // Nuevo estado para saber qué estamos editando
+
+            const handleNewProject = (selectedMode) => { 
+                setMode(selectedMode); 
+                setInitialData(null); 
+                setCurrentName(null); // Proyecto nuevo no tiene nombre aún
+                setView('editor'); 
             };
-            return view === 'welcome' ? <WelcomeScreen onNew={handleNewProject} onOpen={handleOpenProject} /> : <Editor mode={mode} onBack={()=>setView('welcome')} initialNodes={initialData?.blocks} initialEdges={initialData?.edges} />;
+
+            const handleOpenProject = async () => {
+                const name = prompt("Nombre del archivo a abrir:"); 
+                if(!name) return;
+                try { 
+                    const data = await window.eel.api_load_project(name)(); 
+                    if(data && !data.error) { 
+                        // Configuramos el modo según lo que devolvió el archivo (ml o python)
+                        setMode(data.mode || 'ml'); 
+                        setInitialData(data); 
+                        // Usamos _found_name si existe (nombre limpio), o lo que escribió el usuario
+                        setCurrentName(data._found_name || name); 
+                        setView('editor'); 
+                    } else {
+                        alert("Error: " + (data.error || "No se pudo cargar"));
+                    }
+                } catch(e) { console.error(e); }
+            };
+
+            return view === 'welcome' 
+                ? <WelcomeScreen onNew={handleNewProject} onOpen={handleOpenProject} /> 
+                : <Editor 
+                    mode={mode} 
+                    onBack={() => setView('welcome')} 
+                    initialNodes={initialData?.blocks} 
+                    initialEdges={initialData?.edges}
+                    currentName={currentName}       // Pasamos el nombre
+                    setCurrentName={setCurrentName} // Pasamos la función para actualizarlo al guardar
+                  />;
         };
 
         const root = createRoot(document.getElementById('root'));

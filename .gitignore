@@ -16,6 +16,7 @@ models/
 logs/*.log
 projects/
 exports/*.h
+trash/
 *.edubotproj
 *.json
 
