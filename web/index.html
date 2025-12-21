@@ -55,6 +55,44 @@
             from { stroke-dashoffset: 20; }
             to { stroke-dashoffset: 0; }
         }
+        /* --- ESTILOS DE SIMULACIÓN AVANZADA --- */
+        .sim-container { width: 100%; height: 100%; position: relative; background: #0f1115; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        .sim-svg { width: 90%; height: 90%; overflow: visible; }
+        
+        /* Líneas de conexión */
+        .sim-link { fill: none; stroke-linecap: round; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+        .sim-link.idle { stroke: #374151; stroke-width: 1.5; opacity: 0.2; }
+        .sim-link.active { stroke: #10b981; stroke-width: 2; opacity: 0.9; filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.6)); } 
+        .sim-link.error { stroke: #f97316; stroke-width: 2; opacity: 0.8; stroke-dasharray: 6; }
+
+        /* Nodos (Círculos, Rectángulos, Paths) */
+        .sim-node { transition: all 0.6s ease; }
+        .sim-node circle, .sim-node rect, .sim-node path.node-shape { stroke-width: 2; transition: all 0.5s ease; }
+        
+        /* ESTADO IDLE (Gris Apagado) */
+        .sim-node.idle circle, .sim-node.idle rect { fill: #111827; stroke: #4b5563; }
+        .sim-node.idle path.node-shape { stroke: #4b5563; }
+        .sim-node.idle text { fill: #6b7280; }
+
+        /* ESTADO ACTIVE (Verde Neón Moderno) */
+        .sim-node.active circle, .sim-node.active rect { 
+            fill: rgba(6, 78, 59, 0.4); /* Fondo semitransparente verde */
+            stroke: #10b981; 
+            filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.5)); 
+        }
+        .sim-node.active path.node-shape { 
+            stroke: #10b981; 
+            filter: drop-shadow(0 0 5px rgba(16, 185, 129, 0.5)); 
+        }
+        .sim-node.active text { fill: #d1fae5; text-shadow: 0 0 5px rgba(16, 185, 129, 0.8); }
+
+        /* ESTADO ERROR (Naranja Alerta) */
+        .sim-node.error circle, .sim-node.error rect { fill: rgba(69, 26, 3, 0.4); stroke: #f97316; }
+        .sim-node.error path.node-shape { stroke: #f97316; }
+        .sim-node.error text { fill: #fdba74; }
+        
+        /* Partículas */
+        .data-particle { fill: #ffffff; filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)); }
     </style>
 </head>
 <body>
@@ -259,13 +297,12 @@
         const DatasetNode = ({ data, id }) => {
             const [files, setFiles] = useState([]);
 
-            // Efecto: Cuando el usuario elige 'csv', pedimos la lista a Python
+            // Efecto: Cargar lista de archivos
             useEffect(() => {
                 if (data.source === 'csv') {
                     const fetchFiles = async () => {
                         if (window.eel) {
                             try {
-                                // LLAMADA AL PUENTE (main.py)
                                 const res = await window.eel.api_file_list()();
                                 if (res && res.datasets) {
                                     setFiles(res.datasets);
@@ -283,7 +320,14 @@
                 <BaseNode title="Dataset" icon={Database} color="bg-blue-600">
                     <div>
                         <label className="node-label">Nombre interno</label>
-                        <input name="name" className="node-input nodrag" value={data.name||'data'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} />
+                        {/* Corrección aquí: Usamos una ternaria estricta en lugar de OR (||) */}
+                        {/* Esto permite que el campo esté vacío ("") sin que se rellene solo */}
+                        <input 
+                            name="name" 
+                            className="node-input nodrag" 
+                            value={data.name !== undefined ? data.name : 'data'} 
+                            onChange={e => data.onChange(id, {...data, [e.target.name]: e.target.value})} 
+                        />
                     </div>
                     <div className="mt-1">
                         <label className="node-label">Fuente</label>
@@ -293,7 +337,6 @@
                         </select>
                     </div>
                     
-                    {/* DROP-DOWN DINÁMICO */}
                     {data.source === 'csv' && (
                         <div className="mt-1 animate-fade-in">
                             <label className="node-label text-blue-300">Seleccionar Archivo</label>
@@ -315,20 +358,261 @@
             );
         };
 
-        const SimulationView = ({ active, status }) => {
-            const [step, setStep] = useState(0);
-            useEffect(() => { if (!active || status === 'error') return; const i = setInterval(() => setStep(s => (s + 1) % 5), 600); return () => clearInterval(i); }, [active, status]);
-            const c = status === 'error' ? 'text-red-500' : active ? 'text-green-400' : 'text-gray-600';
-            const bg = status === 'error' ? 'bg-red-900/50 border-red-500' : active ? 'bg-green-900/50 border-green-500' : 'bg-gray-800 border-gray-600';
+        // --- VISUALIZACIÓN AVANZADA DE SIMULACIÓN ---
+        const SimulationView = ({ active, status, modelType }) => {
+            const stateClass = status === 'error' ? 'error' : active ? 'active' : 'idle';
+            
+            // Partícula de Datos (Punto de luz viajero)
+            const DataParticle = ({ pathId, delay = 0, duration = 1.5, repeat = "indefinite" }) => (
+                active && status !== 'error' ? (
+                    <circle r="2.5" className="data-particle">
+                        <animateMotion dur={`${duration}s`} repeatCount={repeat} begin={`${delay}s`} keyPoints="0;1" keyTimes="0;1" calcMode="linear">
+                            <mpath href={`#${pathId}`} />
+                        </animateMotion>
+                    </circle>
+                ) : null
+            );
+
+            // 1. NEURAL NET (Redensa y conectada)
+            const NeuralNetViz = () => {
+                const layer1 = [0, 1, 2];    // Input
+                const layer2 = [0, 1, 2, 3]; // Hidden
+                const layer3 = [0];          // Output
+                
+                return (
+                    <svg className="sim-svg" viewBox="0 0 500 250">
+                        {/* Conexiones Capa 1 -> 2 */}
+                        {layer1.map((l1, i) => layer2.map((l2, j) => {
+                            const pid = `n-link-1-${i}-${j}`;
+                            return (
+                                <g key={pid}>
+                                    <path id={pid} d={`M 100 ${60 + i*60} C 200 ${60 + i*60}, 200 ${40 + j*50}, 300 ${40 + j*50}`} className={`sim-link ${stateClass}`} strokeOpacity="0.4" />
+                                    {/* Solo animamos algunas partículas para no saturar */}
+                                    {(i+j)%2===0 && <DataParticle pathId={pid} delay={Math.random()} duration={2} />}
+                                </g>
+                            )
+                        }))}
+                        
+                        {/* Conexiones Capa 2 -> 3 */}
+                        {layer2.map((l2, j) => {
+                            const pid = `n-link-2-${j}`;
+                            return (
+                                <g key={pid}>
+                                    <path id={pid} d={`M 300 ${40 + j*50} C 380 ${40 + j*50}, 380 125, 450 125`} className={`sim-link ${stateClass}`} />
+                                    <DataParticle pathId={pid} delay={1 + j*0.2} duration={1.5} />
+                                </g>
+                            )
+                        })}
+
+                        {/* Nodos Visuales */}
+                        {layer1.map((_, i) => (
+                            <g key={`in-${i}`} className={`sim-node ${stateClass}`}>
+                                <circle cx="100" cy={60 + i*60} r="14" />
+                                <text x="85" y={65 + i*60} fontSize="10" textAnchor="end">in_{i}</text>
+                            </g>
+                        ))}
+                        
+                        {layer2.map((_, i) => (
+                            <g key={`hid-${i}`} className={`sim-node ${stateClass}`}>
+                                <circle cx="300" cy={40 + i*50} r="12" />
+                            </g>
+                        ))}
+                        
+                        <g className={`sim-node ${stateClass}`}>
+                            <circle cx="450" cy="125" r="18" />
+                            <text x="450" y="160" fontSize="12" textAnchor="middle" fontWeight="bold">OUT</text>
+                        </g>
+                        
+                        <text x="250" y="20" fontSize="10" fill="#4b5563" textAnchor="middle" letterSpacing="2px">NEURAL PATHWAY</text>
+                    </svg>
+                );
+            };
+
+            // 2. RANDOM FOREST
+            const ForestViz = () => {
+                // Configuración de la cuadrícula
+                const trees = [0, 1, 2];
+                const treeX = 60;   // Posición X de los árboles
+                const voteBoxX = 380; // Posición X de la caja de votos
+                const voteInputX = voteBoxX - 20; // Punto de entrada visual a la caja
+                
+                return (
+                    <svg className="sim-svg" viewBox="0 0 500 250">
+                        {/* Definiciones para degradados y efectos reutilizables */}
+                        <defs>
+                            <linearGradient id="treeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="#10b981" stopOpacity="0.8" />
+                                <stop offset="100%" stopColor="#34d399" stopOpacity="0.3" />
+                            </linearGradient>
+                            <filter id="glow-effect" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="2" result="blur" />
+                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                            </filter>
+                        </defs>
+
+                        {trees.map((t, i) => {
+                            // Cálculo dinámico de posiciones para distribución perfecta
+                            const yBase = 50 + i * 75; 
+                            const pathId = `tree-flow-${i}`;
+                            
+                            // Coordenadas internas del "Mini-Árbol"
+                            const rootX = treeX;
+                            const level1X = treeX + 35;
+                            const level2X = treeX + 70; // Puntas de las ramas (hojas)
+
+                            return (
+                                <g key={i} className={`sim-node ${stateClass}`}>
+                                    {/* --- ESTRUCTURA DEL ÁRBOL (VISUALIZACIÓN ESTÁTICA) --- */}
+                                    
+                                    {/* Raíz y Conexiones Internas (Dendrograma Tech) */}
+                                    {/* Ramas Superiores e Inferiores dibujadas con polilíneas para estilo 'Circuit' */}
+                                    <polyline 
+                                        points={`${rootX},${yBase} ${level1X},${yBase} ${level1X},${yBase-15} ${level2X},${yBase-25}`} 
+                                        className={`sim-link ${stateClass}`} fill="none" opacity="0.5"
+                                    />
+                                    <polyline 
+                                        points={`${rootX},${yBase} ${level1X},${yBase} ${level1X},${yBase+15} ${level2X},${yBase+25}`} 
+                                        className={`sim-link ${stateClass}`} fill="none" opacity="0.5"
+                                    />
+                                    
+                                    {/* Nodos del Árbol (Puntos de Decisión) */}
+                                    {/* Raíz (Input del árbol) */}
+                                    <circle cx={rootX} cy={yBase} r="14" className={active ? "fill-gray-800 stroke-green-500" : "fill-gray-900 stroke-gray-600"} strokeWidth="2" />
+                                    <g transform={`translate(${rootX - 8}, ${yBase - 8})`}>
+                                        <Sprout size={16} className={active ? "text-green-400" : "text-gray-500"} />
+                                    </g>
+
+                                    {/* Nodos Hoja (Salidas del árbol individual) */}
+                                    <circle cx={level2X} cy={yBase - 25} r="3" className="fill-gray-500" opacity="0.6" />
+                                    <circle cx={level2X} cy={yBase + 25} r="3" className="fill-gray-500" opacity="0.6" />
+
+                                    {/* --- FLUJO DE DATOS (ANIMACIÓN) --- */}
+                                    
+                                    {/* Path de Simulación: Raíz -> Decisión -> Hoja Superior -> Convergencia al Voto */}
+                                    {/* Usamos curvas Bezier (C) para crear un efecto de "cableado orgánico" hacia el centro */}
+                                    <path id={pathId} 
+                                          d={`M ${rootX} ${yBase} 
+                                              L ${level1X} ${yBase} 
+                                              L ${level2X} ${yBase - 25} 
+                                              C ${level2X + 50} ${yBase - 25}, ${voteInputX - 50} 125, ${voteInputX} 125`} 
+                                          fill="none" stroke="none" />
+                                    
+                                    {/* Visualización del cable de conexión (Solo la parte que sale del árbol hacia el voto) */}
+                                    <path d={`M ${level2X} ${yBase - 25} C ${level2X + 50} ${yBase - 25}, ${voteInputX - 50} 125, ${voteInputX} 125`} 
+                                          className={`sim-link ${stateClass}`} 
+                                          strokeDasharray={stateClass === 'idle' ? "4" : "0"} 
+                                          opacity={0.4} />
+
+                                    {/* Partícula de Datos (El "Voto" viajando) */}
+                                    <DataParticle pathId={pathId} delay={i * 0.3} duration={2.2} />
+                                </g>
+                            )
+                        })}
+                        
+                        {/* --- NODO DE AGREGACIÓN (VOTE BOX) --- */}
+                        <g className={`sim-node ${stateClass}`}>
+                            {/* Conector de entrada (El "Embudo") */}
+                            <path d={`M ${voteInputX} 125 L ${voteBoxX} 125`} stroke={active ? "#10b981" : "#4b5563"} strokeWidth="3" />
+                            <circle cx={voteInputX} cy="125" r="4" fill={active ? "#10b981" : "#4b5563"} />
+
+                            {/* Caja Principal del Procesador */}
+                            <rect x={voteBoxX} y="90" width="80" height="70" rx="6" 
+                                  className={active ? "fill-gray-900 stroke-green-500" : "fill-gray-900 stroke-gray-600"} 
+                                  strokeWidth="2" 
+                                  filter={active ? "url(#glow-effect)" : ""}
+                            />
+                            
+                            {/* Detalles UI internos ("Pantalla" del procesador) */}
+                            <rect x={voteBoxX + 10} y="100" width="60" height="30" rx="2" fill="#111827" stroke="none" />
+                            
+                            {/* Barras de "Carga/Proceso" animadas */}
+                            {active && (
+                                <g>
+                                    <rect x={voteBoxX + 15} y="108" width="50" height="4" rx="1" fill="#064e3b" />
+                                    <rect x={voteBoxX + 15} y="108" width="35" height="4" rx="1" fill="#10b981">
+                                        <animate attributeName="width" values="10;50;30;45" dur="1.5s" repeatCount="indefinite" />
+                                    </rect>
+                                    
+                                    <rect x={voteBoxX + 15} y="118" width="50" height="4" rx="1" fill="#064e3b" />
+                                    <rect x={voteBoxX + 15} y="118" width="20" height="4" rx="1" fill="#34d399">
+                                        <animate attributeName="width" values="0;40;15;50" dur="2s" repeatCount="indefinite" />
+                                    </rect>
+                                </g>
+                            )}
+
+                            {/* Texto de Etiqueta */}
+                            <text x={voteBoxX + 40} y="148" fontSize="10" fill={active ? "#d1fae5" : "#6b7280"} textAnchor="middle" fontWeight="bold" letterSpacing="1px">
+                                CONSENSUS
+                            </text>
+                            
+                            {/* Etiqueta de Salida */}
+                             <text x={voteBoxX + 40} y="80" fontSize="9" fill="#4b5563" textAnchor="middle">AGGREGATION</text>
+                        </g>
+                    </svg>
+                );
+            };
+
+            // 3. GENERIC / LINEAR (Cajas iluminadas)
+            const GenericViz = () => (
+                <svg className="sim-svg" viewBox="0 0 500 250">
+                    <defs>
+                        <filter id="glow">
+                            <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+                            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        </filter>
+                    </defs>
+
+                    {/* Camino Principal */}
+                    <path id="gen-path" d="M 80 125 L 180 125 L 320 125 L 420 125" className={`sim-link ${stateClass}`} />
+                    <DataParticle pathId="gen-path" duration={2} />
+                    
+                    {/* Input Box */}
+                    <g className={`sim-node ${stateClass}`}>
+                        <rect x="40" y="100" width="50" height="50" rx="6" />
+                        <text x="65" y="130" fontSize="12" textAnchor="middle" fontWeight="bold">IN</text>
+                    </g>
+
+                    {/* PROCESO CENTRAL */}
+                    <g className={`sim-node ${stateClass}`}>
+                        <rect x="180" y="85" width="140" height="80" rx="10" strokeWidth="3" />
+                        <text x="250" y="120" fontSize="14" textAnchor="middle" fontWeight="bold" letterSpacing="1px">MODEL</text>
+                        <text x="250" y="140" fontSize="10" textAnchor="middle" opacity="0.7">PROCESS</text>
+                    </g>
+
+                    {/* Output Circle */}
+                    <g className={`sim-node ${stateClass}`}>
+                        <circle cx="435" cy="125" r="20" />
+                        <text x="435" y="130" fontSize="12" textAnchor="middle" fontWeight="bold">Y</text>
+                    </g>
+                </svg>
+            );
+
+            // Router de Visualización
+            let Content = GenericViz;
+            const t = (modelType || '').toLowerCase();
+            if (t.includes('neural') || t.includes('nn')) Content = NeuralNetViz;
+            else if (t.includes('rf') || t.includes('random') || t.includes('forest') || t.includes('tree')) Content = ForestViz;
+
             return (
-                <div className="flex flex-col items-center justify-center h-full bg-[#111827] relative overflow-hidden">
-                    <div className="absolute inset-0 opacity-5" style={{backgroundImage: 'radial-gradient(#4ade80 1px, transparent 1px)', backgroundSize: '30px 30px'}}></div>
-                    <h2 className={`text-xl font-mono mb-8 flex items-center gap-3 ${c}`}><Activity className={active ? "animate-pulse" : ""} />{status === 'error' ? 'ERROR' : active ? 'SIMULACIÓN: ACTIVA' : 'INACTIVO'}</h2>
-                    <div className="flex items-center gap-16 relative">
-                        <div className="flex flex-col gap-4">{[0,1,2].map(i => <div key={i} className={`w-12 h-12 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${bg} ${step === 0 && active ? 'scale-110 shadow-[0_0_15px_currentColor]' : ''}`}><span className="text-[10px] font-bold">X{i}</span></div>)}</div>
-                        <div className={`w-24 h-24 rounded-xl border-2 flex items-center justify-center z-10 transition-all duration-300 ${bg} ${step === 2 && active ? 'scale-110 rotate-3 shadow-[0_0_20px_currentColor]' : ''}`}><Brain size={40} className={active ? "animate-pulse" : "opacity-50"} /></div>
-                        <div className={`w-16 h-16 rounded-full border-2 flex items-center justify-center z-10 transition-all duration-300 ${bg} ${step === 4 && active ? 'scale-125 shadow-[0_0_25px_currentColor]' : ''}`}><span className="text-xs font-bold">Y_PRED</span></div>
+                <div className={`sim-container ${active ? 'sim-active' : ''}`}>
+                    <div className="absolute top-4 left-6 font-mono text-xs text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${active ? 'bg-green-500 animate-pulse' : status==='error'?'bg-red-500':'bg-gray-600'}`}></div>
+                        SIMULATION: <span className={stateClass === 'active' ? "text-green-400" : "text-gray-400"}>
+                            {modelType ? modelType.replace('ml_train_', '').toUpperCase() : 'GENERIC'}
+                        </span>
                     </div>
+                    
+                    {/* Overlay de Error */}
+                    {status === 'error' && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-20 backdrop-blur-sm">
+                            <div className="bg-red-950/90 text-red-200 px-6 py-4 rounded-xl border border-red-500/50 shadow-2xl flex flex-col items-center gap-2 animate-bounce">
+                                <AlertTriangle size={32} />
+                                <span className="font-bold tracking-wide">ERROR EN EJECUCIÓN</span>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <Content />
                 </div>
             );
         };
@@ -450,7 +734,43 @@
                     </div>
                 </BaseNode>
             ),
-            ml_predict: ({ data, id }) => <BaseNode title="Ejecutar" icon={PlayCircle} color="bg-red-600"><select name="action_type" className="node-input nodrag mb-2" value={data.action_type||'predict'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="predict">Predict</option><option value="eval">Eval</option></select>{data.action_type==='predict'&&<div><label className="node-label">X</label><input name="X" placeholder="[[1,2]]" className="node-input nodrag" value={data.X||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div>}</BaseNode>,
+            ml_predict: ({ data, id }) => {
+                // Normalizamos el modo actual. 
+                // Si es undefined (recién creado), asumimos 'predict' para todo el componente.
+                const currentMode = data.action_type || 'predict';
+
+                return (
+                    <BaseNode title="Ejecutar" icon={PlayCircle} color="bg-red-600">
+                        <div className="mb-2">
+                            <label className="node-label text-red-200 mb-1 block">Modo de Ejecución:</label>
+                            <select 
+                                name="action_type" 
+                                className="node-input nodrag font-semibold" 
+                                value={currentMode} // Usamos la variable normalizada
+                                onChange={e => data.onChange(id, { ...data, [e.target.name]: e.target.value })}
+                            >
+                                <option value="predict">Predict (Predecir)</option>
+                                <option value="eval">Evaluate (Evaluar Precisión)</option>
+                            </select>
+                        </div>
+                        
+                        {/* Condición corregida: Usamos currentMode */}
+                        {currentMode === 'predict' && (
+                            <div className="animate-fade-in">
+                                <label className="node-label">Datos de Entrada (X)</label>
+                                <input 
+                                    name="X" 
+                                    placeholder="Ej: [0.5, 0.2]" 
+                                    className="node-input nodrag" 
+                                    value={data.X || ''} 
+                                    onChange={e => data.onChange(id, { ...data, [e.target.name]: e.target.value })} 
+                                />
+                                <p className="text-[9px] text-gray-400 mt-1">Ingresa valores separados por coma</p>
+                            </div>
+                        )}
+                    </BaseNode>
+                );
+            },
             
             py_var: ({ data, id }) => <BaseNode title="Variable" icon={Variable} color="bg-yellow-600"><div className="flex gap-2 items-center"><input name="var_name" placeholder="x" className="node-input nodrag w-1/3" value={data.var_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-bold">=</span><input name="value" placeholder="10" className="node-input nodrag" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
             py_print: ({ data, id }) => <BaseNode title="Print" icon={Terminal} color="bg-gray-600"><input name="content" placeholder="msg" className="node-input nodrag" value={data.content||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
@@ -577,6 +897,10 @@
             const [memoryStats, setMemoryStats] = useState(null);
             const [simulationStatus, setSimulationStatus] = useState({ active: false, status: 'idle' });
             const reactFlowWrapper = useRef(null);
+            // --- DETECTAR MODELO ACTIVO ---
+            // Buscamos si existe algún nodo de entrenamiento en el lienzo
+            const trainNode = nodes.find(n => n.type.startsWith('ml_train'));
+            const activeModelType = trainNode ? trainNode.type : null;
 
             const addLog = (msg, type = 'info') => setLogs(p => [...p, { time: new Date().toLocaleTimeString(), msg, type }]);
             
@@ -781,7 +1105,7 @@
                         </div>
                         <div className="flex-1 relative bg-[#1e1e1e]" ref={reactFlowWrapper}>
                             {activeTab==='forest' ? <div className="h-full w-full"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} edgeTypes={edgeTypes} onInit={setReactFlowInstance} onDrop={onDrop} onDragOver={onDragOver} nodeTypes={nodeTypes} fitView snapToGrid snapGrid={[15,15]}><Background color="#333" gap={20} /><Controls className="bg-gray-800 border-gray-700 fill-white text-white" /></ReactFlow></div> :
-                             activeTab==='simulation' && mode==='ml' ? <SimulationView active={simulationStatus.active} status={simulationStatus.status} /> :
+                             activeTab==='simulation' && mode==='ml' ? <SimulationView active={simulationStatus.active} status={simulationStatus.status} modelType={activeModelType} /> :
                              <div className="h-full w-full relative"><textarea className="w-full h-full bg-[#1e1e1e] text-green-400 p-4 font-mono text-sm resize-none focus:outline-none" value={pythonCode} readOnly spellCheck="false"></textarea></div>}
                         </div>
                     </div>
