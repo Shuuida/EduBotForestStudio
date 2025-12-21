@@ -60,28 +60,38 @@ def clear_registry():
 # PIPELINE DE ENTRENAMIENTO
 
 def train_pipeline(model_name: str, dataset: List[List[float]], model_type: str, params: Dict[str, Any], scaling: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Orquesta el flujo completo: Limpieza -> Instanciación -> Entrenamiento -> Registro.
-    """
     print(f"--- Iniciando Pipeline para '{model_name}' ({model_type}) ---")
     
-    # Imputación de Datos (Limpieza)
+    # Limpieza
     print(" Ejecutando imputación de datos...")
-    # Usamos strategy='mean' explícito compatible con ml_compat v2.4
     clean_dataset = impute_missing_values(dataset, strategy='mean')
     
-    # Escalado (Opcional - Placeholder para futura implementación)
-    if scaling:
-        print(f" Aplicando escalado: {scaling} (Simulado)")
-        # Aquí iría la lógica de StandardScaler si se implementa en runtime
+    # Escalado Inteligente
+    scaler = None
+    if scaling == 'standard':
+        print(" Aplicando escalado Standard (Z-Score)...")
+        # Separamos Features (X) y Target (y) para no escalar el target (clase)
+        # Asumimos que la última columna es el target
+        X = [row[:-1] for row in clean_dataset]
+        y = [row[-1] for row in clean_dataset]
+        
+        scaler = ml_runtime.MiniScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Reconstruimos el dataset
+        clean_dataset = [x + [target] for x, target in zip(X_scaled, y)]
     else:
         print(" Escalado omitido.")
 
-    # Creación del Modelo (Factory)
+    # Creación del Modelo
     try:
         model = ml_factory.create_model(model_type, params)
     except ValueError as e:
         raise ValueError(f"Error en Factory: {e}")
+
+    # Inyectar Scaler en el Modelo (Para que persista)
+    if scaler:
+        model.scaler = scaler
 
     # Entrenamiento
     print(f" Entrenando modelo {type(model).__name__}...")
@@ -89,47 +99,42 @@ def train_pipeline(model_name: str, dataset: List[List[float]], model_type: str,
     model.fit(clean_dataset)
     duration = time.time() - start_time
     
-    # Registro automático
+    # Registro
     register_model(model_name, model, metadata={
         "type": model_type,
         "params": params,
-        "duration": duration
+        "duration": duration,
+        "scaling": scaling # Guardamos info del escalado
     })
     
     print(f"--- Pipeline finalizado exitosamente en {duration:.4f}s ---")
     
-    return {
-        "status": "success",
-        "model": model,
-        "name": model_name,
-        "duration": duration
-    }
+    return {"status": "success", "model": model, "name": model_name}
 
 # ---------------------------------------------------------
 # INFERENCIA Y EVALUACIÓN
 
 def predict(name_or_model: Union[str, Any], X: List[Any]) -> List[Any]:
     """
-    Ejecuta predicciones. Acepta nombre del registro u objeto directo.
-    CORRECCIÓN: Maneja inputs 1D (un solo ejemplo) envolviéndolos automáticamente.
+    Ejecuta predicciones aplicando escalado automático si el modelo lo tiene.
     """
     # Resolver modelo
     if isinstance(name_or_model, str):
         model = get_model(name_or_model)
-        if not model:
-            raise ValueError(f"Modelo '{name_or_model}' no encontrado.")
+        if not model: raise ValueError(f"Modelo '{name_or_model}' no encontrado.")
     else:
         model = name_or_model
 
-    # Auto-corrección de Dimensiones (UX Friendly)
-    # Si X es [1, 2, 3] (lista de números), lo convertimos a [[1, 2, 3]]
-    if isinstance(X, list) and len(X) > 0:
-        # Verificamos si el primer elemento NO es una lista (es decir, es un número)
-        if not isinstance(X[0], list):
-            # Asumimos que es una sola muestra y la envolvemos
-            X = [X]
+    # Auto-corrección de Dimensiones (Input 1D -> 2D)
+    if isinstance(X, list) and len(X) > 0 and not isinstance(X[0], list):
+        X = [X]
 
-    # Ejecutar predicción
+    # Aplicar Escalado Automático (Si el modelo fue entrenado con él)
+    if hasattr(model, 'scaler') and model.scaler:
+        # print(" [Debug] Aplicando escalado a entrada de predicción...")
+        X = model.scaler.transform(X)
+
+    # 4. Ejecutar predicción
     if hasattr(model, 'predict'):
         return model.predict(X)
     else:

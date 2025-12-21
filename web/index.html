@@ -36,6 +36,25 @@
         .vscode-terminal { font-family: 'Consolas', 'Monaco', 'Courier New', monospace; background-color: #1e1e1e; color: #cccccc; line-height: 1.4; }
         @keyframes flowPulse { 0% { opacity: 0.2; transform: scale(1); } 50% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0.2; transform: scale(1); } }
         .flow-particle { animation: flowPulse 1.5s infinite; }
+        .edge-path-active {
+            stroke-width: 3;
+            filter: drop-shadow(0 0 4px currentColor); /* Efecto Neón */
+            animation: dashdraw 1s linear infinite;
+            stroke-dasharray: 10;
+        }
+        .edge-path-error {
+            stroke: #f97316 !important; /* Naranja Warning */
+            stroke-width: 3;
+            stroke-dasharray: 5;
+        }
+        .edge-path-idle {
+            stroke-width: 2;
+            opacity: 0.8;
+        }
+        @keyframes dashdraw {
+            from { stroke-dashoffset: 20; }
+            to { stroke-dashoffset: 0; }
+        }
     </style>
 </head>
 <body>
@@ -356,10 +375,81 @@
             ml_dataset: DatasetNode, // Usamos el componente corregido
             ml_train_dt: ({ data, id }) => <BaseNode title="Decision Tree" icon={GitBranch} color="bg-emerald-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Depth</label><input name="max_depth" type="number" className="node-input nodrag" value={data.max_depth||5} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">MinLeaf</label><input name="min_size" type="number" className="node-input nodrag" value={data.min_size||1} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
             ml_train_rf: ({ data, id }) => <BaseNode title="Random Forest" icon={Layers} color="bg-emerald-700"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Trees</label><input name="n_trees" type="number" className="node-input nodrag" value={data.n_trees||10} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">Depth</label><input name="max_depth" type="number" className="node-input nodrag" value={data.max_depth||5} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
-            ml_train_knn: ({ data, id }) => <BaseNode title="KNN" icon={Users} color="bg-purple-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="mt-1"><label className="node-label">K</label><input name="k" type="number" className="node-input nodrag" value={data.k||3} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><select name="task" className="node-input nodrag mt-1" value={data.task||'classification'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="classification">Clasificación</option><option value="regression">Regresión</option></select></BaseNode>,
-            ml_train_svm: ({ data, id }) => <BaseNode title="SVM" icon={Split} color="bg-pink-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Iter</label><input name="n_iters" type="number" className="node-input nodrag" value={data.n_iters||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">LR</label><input name="learning_rate" type="number" step="0.001" className="node-input nodrag" value={data.learning_rate||0.001} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
-            ml_train_linear: ({ data, id }) => <BaseNode title="Linear Reg" icon={ArrowRight} color="bg-cyan-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Epochs</label><input name="epochs" type="number" className="node-input nodrag" value={data.epochs||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">LR</label><input name="learning_rate" type="number" step="0.01" className="node-input nodrag" value={data.learning_rate||0.01} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
-            ml_train_nn: ({ data, id }) => <BaseNode title="Neural Net" icon={Brain} color="bg-indigo-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="grid grid-cols-2 gap-1 mt-1"><div><label className="node-label">Hidden</label><input name="hidden_size" type="number" className="node-input nodrag" value={data.hidden_size||4} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">Epochs</label><input name="epochs" type="number" className="node-input nodrag" value={data.epochs||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">LR</label><input name="lr" type="number" step="0.01" className="node-input nodrag" value={data.lr||0.1} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">Inputs</label><input name="n_inputs" type="number" className="node-input nodrag" value={data.n_inputs||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
+            // 1. NEURAL NET (Con opción de escalado)
+            ml_train_nn: ({ data, id }) => (
+                <BaseNode title="Neural Net" icon={Brain} color="bg-indigo-600">
+                    <input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} />
+                    <div className="grid grid-cols-2 gap-1 mt-1">
+                        <div><label className="node-label">Hidden</label><input name="hidden_size" type="number" className="node-input nodrag" value={data.hidden_size||4} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div>
+                        <div><label className="node-label">Epochs</label><input name="epochs" type="number" className="node-input nodrag" value={data.epochs||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div>
+                        <div><label className="node-label">LR</label><input name="lr" type="number" step="0.01" className="node-input nodrag" value={data.lr||0.1} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div>
+                        <div><label className="node-label">Inputs</label><input name="n_inputs" type="number" className="node-input nodrag" value={data.n_inputs||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div>
+                    </div>
+                    {/* NUEVO CAMPO: ESCALADO */}
+                    <div className="mt-1 border-t border-indigo-500/30 pt-1">
+                        <label className="node-label text-indigo-200">Preprocesamiento</label>
+                        <select name="scaling" className="node-input nodrag text-xs" value={data.scaling||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}>
+                            <option value="">Sin Escalado (Raw)</option>
+                            <option value="standard">Standard (Z-Score)</option>
+                        </select>
+                    </div>
+                </BaseNode>
+            ),
+
+            // 2. SVM (Con opción de escalado - CRÍTICO para SVM)
+            ml_train_svm: ({ data, id }) => (
+                <BaseNode title="SVM" icon={Split} color="bg-pink-600">
+                    <input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} />
+                    <div className="flex gap-2 mt-1">
+                        <div><label className="node-label">Iter</label><input name="n_iters" type="number" className="node-input nodrag" value={data.n_iters||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div>
+                        <div><label className="node-label">LR</label><input name="learning_rate" type="number" step="0.001" className="node-input nodrag" value={data.learning_rate||0.001} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div>
+                    </div>
+                    <div className="mt-1">
+                        <select name="scaling" className="node-input nodrag text-xs" value={data.scaling||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}>
+                            <option value="">No Scale</option>
+                            <option value="standard">StandardScaler</option>
+                        </select>
+                    </div>
+                </BaseNode>
+            ),
+
+            // 3. LINEAR REGRESSION
+            ml_train_linear: ({ data, id }) => (
+                <BaseNode title="Linear Reg" icon={ArrowRight} color="bg-cyan-600">
+                    <input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} />
+                    <div className="flex gap-2 mt-1">
+                        <div><label className="node-label">Epochs</label><input name="epochs" type="number" className="node-input nodrag" value={data.epochs||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div>
+                        <div><label className="node-label">LR</label><input name="learning_rate" type="number" step="0.01" className="node-input nodrag" value={data.learning_rate||0.01} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div>
+                    </div>
+                    <div className="mt-1">
+                        <select name="scaling" className="node-input nodrag text-xs" value={data.scaling||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}>
+                            <option value="">No Scale</option>
+                            <option value="standard">StandardScaler</option>
+                        </select>
+                    </div>
+                </BaseNode>
+            ),
+
+            // 4. KNN (Opcional, pero útil)
+            ml_train_knn: ({ data, id }) => (
+                <BaseNode title="KNN" icon={Users} color="bg-purple-600">
+                    <input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} />
+                    <div className="mt-1">
+                        <label className="node-label">K</label>
+                        <input name="k" type="number" className="node-input nodrag" value={data.k||3} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} />
+                    </div>
+                    <select name="task" className="node-input nodrag mt-1" value={data.task||'classification'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}>
+                        <option value="classification">Clasificación</option>
+                        <option value="regression">Regresión</option>
+                    </select>
+                    <div className="mt-1">
+                        <select name="scaling" className="node-input nodrag text-xs" value={data.scaling||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}>
+                            <option value="">No Scale</option>
+                            <option value="standard">StandardScaler</option>
+                        </select>
+                    </div>
+                </BaseNode>
+            ),
             ml_predict: ({ data, id }) => <BaseNode title="Ejecutar" icon={PlayCircle} color="bg-red-600"><select name="action_type" className="node-input nodrag mb-2" value={data.action_type||'predict'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="predict">Predict</option><option value="eval">Eval</option></select>{data.action_type==='predict'&&<div><label className="node-label">X</label><input name="X" placeholder="[[1,2]]" className="node-input nodrag" value={data.X||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div>}</BaseNode>,
             
             py_var: ({ data, id }) => <BaseNode title="Variable" icon={Variable} color="bg-yellow-600"><div className="flex gap-2 items-center"><input name="var_name" placeholder="x" className="node-input nodrag w-1/3" value={data.var_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-bold">=</span><input name="value" placeholder="10" className="node-input nodrag" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
@@ -398,6 +488,85 @@
             </div>
         );
 
+        import { getBezierPath, BaseEdge, useStore } from 'reactflow';
+
+        // A. MAPA DE COLORES
+        const NODE_COLORS = {
+            // ML Nodes
+            ml_dataset: '#2563eb',   // blue-600
+            ml_train_dt: '#059669',  // emerald-600
+            ml_train_rf: '#047857',  // emerald-700
+            ml_train_knn: '#9333ea', // purple-600
+            ml_train_svm: '#db2777', // pink-600
+            ml_train_linear: '#0891b2', // cyan-600
+            ml_train_nn: '#4f46e5',  // indigo-600
+            ml_predict: '#dc2626',   // red-600
+            // Python Nodes
+            py_var: '#ca8a04',       // yellow-600
+            py_print: '#4b5563',     // gray-600
+            py_if: '#ea580c',        // orange-600
+            py_loop: '#c2410c',      // orange-700
+            py_math: '#0d9488',      // teal-600
+            py_func: '#7c3aed',      // violet-600
+            // Default
+            default: '#6b7280'
+        };
+
+        // B. COMPONENTE DE CONEXIÓN INTELIGENTE
+        const SmartEdge = ({ id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style = {}, markerEnd, data }) => {
+            // Obtener nodos internos para saber sus tipos
+            const sourceNode = useStore(s => s.nodeInternals.get(source));
+            const targetNode = useStore(s => s.nodeInternals.get(target));
+
+            const [edgePath] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+
+            // Determinar estado (idle, active, error)
+            const status = data?.status || 'idle'; // 'idle' | 'active' | 'error'
+
+            // Resolver Colores
+            const colorSrc = NODE_COLORS[sourceNode?.type] || NODE_COLORS.default;
+            const colorTgt = NODE_COLORS[targetNode?.type] || NODE_COLORS.default;
+            
+            // Definir estilo dinámico
+            let edgeStyle = { ...style };
+            let gradientId = `grad-${id}`;
+
+            // Lógica de visualización
+            if (status === 'error') {
+                // Caso Error: Naranja sólido
+                edgeStyle.stroke = '#f97316'; 
+            } else if (status === 'active') {
+                // Caso Flujo Activo: Gradiente brillante + Animación CSS
+                edgeStyle.stroke = `url(#${gradientId})`;
+            } else {
+                // Caso Idle (Gris/Apagado o Gradiente suave)
+                edgeStyle.stroke = '#4b5563'; 
+                edgeStyle.opacity = 0.5;
+            }
+
+            return (
+                <>
+                    <defs>
+                        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor={colorSrc} />
+                            <stop offset="100%" stopColor={colorTgt} />
+                        </linearGradient>
+                    </defs>
+                    <BaseEdge 
+                        path={edgePath} 
+                        markerEnd={markerEnd} 
+                        style={edgeStyle} 
+                        className={status === 'active' ? 'edge-path-active' : status === 'error' ? 'edge-path-error' : 'edge-path-idle'}
+                    />
+                </>
+            );
+        };
+        
+        // C. REGISTRO DE TIPO
+        const edgeTypes = {
+            smart: SmartEdge,
+        };
+
         const EditorContent = ({ mode, onBack, initialNodes, initialEdges }) => {
             const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes || []);
             const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges || []);
@@ -411,7 +580,9 @@
 
             const addLog = (msg, type = 'info') => setLogs(p => [...p, { time: new Date().toLocaleTimeString(), msg, type }]);
             
-            const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
+            const onConnect = useCallback((params) => {
+                setEdges((eds) => addEdge({ ...params, type: 'smart', animated: false, data: { status: 'idle' } }, eds));
+            }, [setEdges]);
             
             const onNodeDataChange = (id, newData) => {
                 setNodes((nds) => nds.map((node) => node.id === id ? { ...node, data: newData } : node));
@@ -458,6 +629,10 @@
 
             const runPipeline = async () => {
                 addLog("Ejecutando...", 'warn');
+                
+                // Efecto Visual: Poner conexiones en modo "Activo" (Simulación de flujo)
+                setEdges(eds => eds.map(e => ({ ...e, data: { status: 'active' } })));
+
                 const blocks = serializeNodesLinear(nodes, edges, mode);
                 try {
                     if (window.eel) {
@@ -465,23 +640,70 @@
                         if (res.success) {
                             addLog("Finalizado.", 'success');
                             if (mode === 'ml') setSimulationStatus({ active: true, status: 'success' });
+                            
+                            // LOGS DE SALIDA
                             if(res.results) res.results.forEach(r => {
                                 if(r.result?.status === 'predicted') addLog(`Salida: ${JSON.stringify(r.result.preds)}`, 'success');
                                 if(r.result?.status === 'evaluated') addLog(`Métricas: ${JSON.stringify(r.result.result)}`, 'info');
                             });
                             if(res.output) addLog(res.output, 'output');
+
+                            // Éxito: Volver a estado normal.
+                            // Aquí las dejamos "activas" un momento y luego idle, o las dejamos idle directo.
+                            // Para efecto pedagógico, se deja en gradiente suave tras éxito.
+                            setTimeout(() => {
+                                setEdges(eds => eds.map(e => ({ ...e, data: { status: 'active' } }))); // Mantener bonito o cambiar a 'idle'
+                            }, 500);
+
                         } else {
                             if (mode === 'ml') setSimulationStatus({ active: false, status: 'error' });
                             addLog(`Error: ${res.error}`, 'error');
+                            
+                            // Error: Poner conexiones en Naranja
+                            setEdges(eds => eds.map(e => ({ ...e, data: { status: 'error' } })));
                         }
                     }
-                } catch (e) { addLog(`Error: ${e}`, 'error'); }
+                } catch (e) { 
+                    addLog(`Error: ${e}`, 'error');
+                    setEdges(eds => eds.map(e => ({ ...e, data: { status: 'error' } })));
+                }
             };
 
             const exportToC = async () => {
-                const mn = nodes.filter(n => n.type.includes('ml_train'));
-                if(!mn.length) { addLog("Sin modelos", 'error'); return; }
-                addLog(`Exportando '${mn[0].data.model_name}'...`, 'info');
+                // Buscar el nodo de entrenamiento
+                const mn = nodes.find(n => n.type.includes('ml_train'));
+                
+                if(!mn) { 
+                    addLog("Error: No hay ningún modelo de entrenamiento en el bosque.", 'error'); 
+                    return; 
+                }
+                
+                const modelName = mn.data.model_name;
+                if(!modelName) {
+                    addLog("Error: El modelo no tiene nombre definido.", 'error');
+                    return;
+                }
+
+                addLog(`⚙️ Generando código C para '${modelName}'...`, 'info');
+
+                // Llamada al Backend
+                if(window.eel) {
+                    try {
+                        const res = await window.eel.api_export_c_model(modelName)();
+                        
+                        if(res.success) {
+                            addLog(`✅ ¡ÉXITO! Archivo guardado en:`, 'success');
+                            addLog(res.path, 'output'); // Muestra la ruta en blanco brillante
+                            alert(`Código exportado correctamente en:\n${res.path}`);
+                        } else {
+                            addLog(`❌ Falló la exportación: ${res.error}`, 'error');
+                        }
+                    } catch(e) {
+                        addLog(`Error de comunicación con Python: ${e}`, 'error');
+                    }
+                } else {
+                    addLog("Error: Backend Eel no detectado.", 'error');
+                }
             };
 
             const checkMemory = async () => {
@@ -558,7 +780,7 @@
                             {mode==='ml' && memoryStats && <div className="p-3 bg-gray-800 border-t border-gray-700 text-[10px] font-mono"><div>Flash: {memoryStats.flash_percent}%</div></div>}
                         </div>
                         <div className="flex-1 relative bg-[#1e1e1e]" ref={reactFlowWrapper}>
-                            {activeTab==='forest' ? <div className="h-full w-full"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onInit={setReactFlowInstance} onDrop={onDrop} onDragOver={onDragOver} nodeTypes={nodeTypes} fitView snapToGrid snapGrid={[15,15]}><Background color="#333" gap={20} /><Controls className="bg-gray-800 border-gray-700 fill-white text-white" /></ReactFlow></div> :
+                            {activeTab==='forest' ? <div className="h-full w-full"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} edgeTypes={edgeTypes} onInit={setReactFlowInstance} onDrop={onDrop} onDragOver={onDragOver} nodeTypes={nodeTypes} fitView snapToGrid snapGrid={[15,15]}><Background color="#333" gap={20} /><Controls className="bg-gray-800 border-gray-700 fill-white text-white" /></ReactFlow></div> :
                              activeTab==='simulation' && mode==='ml' ? <SimulationView active={simulationStatus.active} status={simulationStatus.status} /> :
                              <div className="h-full w-full relative"><textarea className="w-full h-full bg-[#1e1e1e] text-green-400 p-4 font-mono text-sm resize-none focus:outline-none" value={pythonCode} readOnly spellCheck="false"></textarea></div>}
                         </div>

@@ -11,6 +11,7 @@ import eel
 import os
 #import json
 #import yaml
+from datetime import datetime
 
 #IMPORTACIONES DEL NÚCLEO DE EDUBOT
 from core.ml_adapter import Translator, execute_structs
@@ -232,6 +233,73 @@ def api_estimate_memory_desktop(model_name):
         return stats
     except Exception as e:
         return {"error": str(e)}
+
+# EXPORTACIÓN A C
+@eel.expose
+def api_export_c_model(model_name):
+    """
+    Genera el código C/C++ para Arduino del modelo entrenado y lo guarda en disco.
+    Incluye automáticamente cabeceras y guardas para Arduino Uno.
+    """
+    try:
+        # Recuperar el modelo de la memoria RAM
+        model = ml_manager.get_model(model_name)
+        if not model:
+            return {"success": False, "error": f"El modelo '{model_name}' no está entrenado. Ejecuta el entrenamiento primero."}
+
+        # Verificar si soporta exportación
+        if not hasattr(model, 'to_arduino_code'):
+             return {"success": False, "error": f"El modelo '{type(model).__name__}' no soporta exportación a C."}
+
+        # Generar el código fuente crudo (Lógica matemática)
+        raw_c_code = model.to_arduino_code(fn_name=model_name)
+        
+        # Preparar el código final (Inyección de Cabeceras)
+        # Generamos un nombre seguro para el Header Guard (ej. UNSABI_MODEL_H)
+        header_guard = f"{model_name.upper()}_MODEL_H"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Plantilla profesional para Arduino Uno
+        final_c_code = f"""
+/**
+* EduBot ML Export: {model_name}
+* Target: Arduino Uno (AVR)
+* Generated at: {timestamp}
+**/
+
+#ifndef {header_guard}
+#define {header_guard}
+
+#include <Arduino.h>       // Tipos básicos (float, int, etc.)
+#include <avr/pgmspace.h>  // Gestión de memoria Flash (PROGMEM)
+#include <math.h>          // Funciones matemáticas (exp, sqrt)
+
+// --- INICIO DEL MODELO GENERADO ---
+{raw_c_code}
+// --- FIN DEL MODELO GENERADO ---
+
+#endif // {header_guard}
+"""
+
+        # Guardar archivo .h en carpeta 'exports'
+        filename = f"{model_name}.h"
+            
+        # Asegurar directorio
+        export_dir = "exports"
+        if not os.path.exists(export_dir):
+            os.makedirs(export_dir)
+                
+        full_path = os.path.join(export_dir, filename)
+            
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(final_c_code)
+                
+            # Retornamos la ruta absoluta
+        abs_path = os.path.abspath(full_path)
+        return {"success": True, "path": abs_path}
+
+    except Exception as e:
+        return {"success": False, "error": f"Error interno exportando: {str(e)}"}
 
 # --------------------------------------------
 # PUNTO DE ENTRADA PRINCIPAL

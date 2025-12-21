@@ -54,7 +54,8 @@ def ml_train_knn_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
         'dataset': block.get('dataset', 'data'),
         'model_name': block.get('model_name', 'knn_model'),
         'k': int(block.get('k', 3)),
-        'task': block.get('task', 'classification') 
+        'task': block.get('task', 'classification'),
+        'scaling': block.get('scaling', None) 
     }
 
 def ml_train_svm_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
@@ -65,6 +66,7 @@ def ml_train_svm_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
         'learning_rate': float(block.get('learning_rate', 0.001)),
         'lambda_param': float(block.get('lambda_param', 0.01)),
         'epochs': int(block.get('epochs', 1000)), # El runtime usa 'n_iters', el adaptador lo mapeará
+        'scaling': block.get('scaling', None)
     }
 
 def ml_train_linear_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
@@ -74,6 +76,7 @@ def ml_train_linear_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
         'model_name': block.get('model_name', 'linear_model'),
         'learning_rate': float(block.get('learning_rate', 0.01)),
         'epochs': int(block.get('epochs', 1000)),
+        'scaling': block.get('scaling', None)
     }
 
 def ml_train_nn_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
@@ -84,7 +87,8 @@ def ml_train_nn_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:
         'hidden_size': int(block.get('hidden_size', 4)),
         'epochs': int(block.get('epochs', 1000)),
         'lr': float(block.get('lr', 0.01)),
-        'n_inputs': block.get('n_inputs') # Opcional, puede ser None (auto-detect)
+        'n_inputs': block.get('n_inputs'), # Opcional, puede ser None (auto-detect)
+        'scaling': block.get('scaling', None)
     }
 
 def ml_predict_block_to_struct(block: Dict[str, Any]) -> Dict[str, Any]:

@@ -15,6 +15,7 @@ models/
 *.json
 logs/*.log
 projects/
+exports/*.h
 *.edubotproj
 *.json
 

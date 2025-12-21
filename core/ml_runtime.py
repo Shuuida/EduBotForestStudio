@@ -511,8 +511,14 @@ class MiniSVM:
 
 class MiniNeuralNetwork:
     def __init__(self, n_inputs=2, n_hidden=4, n_outputs=1, epochs=1000, learning_rate=0.1):
-        self.n_in, self.n_hid, self.n_out = n_inputs, n_hidden, n_outputs
-        self.epochs, self.lr = epochs, learning_rate
+        try:
+            self.n_in = int(n_inputs)
+            self.n_hid = int(n_hidden)
+            self.n_out = int(n_outputs)
+            self.epochs = int(epochs)
+            self.lr = float(learning_rate)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Parámetros de Red Neuronal inválidos: {e}. Asegúrese de usar números.")
         self.W1, self.B1, self.W2, self.B2 = [], [], [], []
         self._init_weights()
         self.quantized = False
@@ -594,6 +600,55 @@ class MiniNeuralNetwork:
         code.append(f"    out[i] = 1.0/(1.0+exp(-s)); }}")
         code.append("}")
         return "\n".join(code)
+
+class MiniScaler:
+    """StandardScaler optimizado (z-score normalization)."""
+    def __init__(self):
+        self.means = []
+        self.stds = []
+        self.fitted = False
+
+    def fit(self, dataset: List[List[float]]) -> None:
+        """Calcula media y desviación estándar de las columnas."""
+        if not dataset: return
+        n_rows = len(dataset)
+        n_cols = len(dataset[0])
+        
+        self.means = [0.0] * n_cols
+        self.stds = [0.0] * n_cols
+        
+        for i in range(n_cols):
+            col_values = [row[i] for row in dataset]
+            mean = sum(col_values) / n_rows
+            variance = sum((x - mean) ** 2 for x in col_values) / n_rows
+            std = math.sqrt(variance)
+            
+            self.means[i] = mean
+            # Evitar división por cero si la columna es constante
+            self.stds[i] = std if std > 1e-9 else 1.0
+        
+        self.fitted = True
+
+    def transform(self, dataset: List[List[float]]) -> List[List[float]]:
+        """Aplica el escalado: (x - u) / s."""
+        if not self.fitted: return dataset
+        
+        scaled_data = []
+        for row in dataset:
+            new_row = []
+            for i, val in enumerate(row):
+                # Proteger contra dimensiones incorrectas
+                if i < len(self.means):
+                    new_val = (val - self.means[i]) / self.stds[i]
+                    new_row.append(new_val)
+                else:
+                    new_row.append(val)
+            scaled_data.append(new_row)
+        return scaled_data
+
+    def fit_transform(self, dataset: List[List[float]]) -> List[List[float]]:
+        self.fit(dataset)
+        return self.transform(dataset)
 
 # -----------------------------------------------
 # MÉTRICAS Y UTILIDADES
