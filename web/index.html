@@ -8,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     
     <link href="https://cdn.jsdelivr.net/npm/reactflow@11.11.4/dist/style.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
     
     <script type="importmap">
         {
@@ -193,6 +194,8 @@
     </style>
 </head>
 <body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
     <div id="root" class="h-screen w-screen flex flex-col"></div>
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -952,6 +955,7 @@
             const [logs, setLogs] = useState([{ time: new Date().toLocaleTimeString(), msg: `Modo: ${mode === 'ml' ? 'Machine Learning' : 'Python Fundamentals'}`, type: 'info' }]);
             const [activeTab, setActiveTab] = useState('forest'); 
             const [pythonCode, setPythonCode] = useState("# El código generado aparecerá aquí...");
+            const codeRef = useRef(null);
             const [memoryStats, setMemoryStats] = useState(null);
             const [simulationStatus, setSimulationStatus] = useState({ active: false, status: 'idle' });
             const reactFlowWrapper = useRef(null);
@@ -1156,6 +1160,15 @@
                 }
             };
 
+            // Resaltado de Sintaxis
+            // Se ejecuta cada vez que cambia el código o la pestaña activa
+            useEffect(() => {
+                if (activeTab === 'code' && codeRef.current && window.Prism) {
+                    // Pedimos a Prism que analice y coloree el elemento
+                    window.Prism.highlightElement(codeRef.current);
+                }
+            }, [activeTab, pythonCode]);
+
             return (
                 <div className="flex h-full flex-col">
                     <div className="h-14 bg-gray-900 border-b border-gray-700 flex items-center px-4 justify-between shrink-0">
@@ -1218,7 +1231,23 @@
                         <div className="flex-1 relative bg-[#1e1e1e]" ref={reactFlowWrapper}>
                             {activeTab==='forest' ? <div className="h-full w-full"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} edgeTypes={edgeTypes} onInit={setReactFlowInstance} onDrop={onDrop} onDragOver={onDragOver} nodeTypes={nodeTypes} fitView snapToGrid snapGrid={[15,15]}><Background color="#333" gap={20} /><Controls className="bg-gray-800 border-gray-700 fill-white text-white" /></ReactFlow></div> :
                              activeTab==='simulation' && mode==='ml' ? <SimulationView active={simulationStatus.active} status={simulationStatus.status} modelType={activeModelType} /> :
-                             <div className="h-full w-full relative"><textarea className="w-full h-full bg-[#1e1e1e] text-green-400 p-4 font-mono text-sm resize-none focus:outline-none" value={pythonCode} readOnly spellCheck="false"></textarea></div>}
+                             <div className="h-full w-full relative bg-[#1d1f21] overflow-auto custom-scrollbar group">
+                                    {/* Botón flotante para copiar código */}
+                                    <button 
+                                        onClick={() => {navigator.clipboard.writeText(pythonCode); addLog("Código copiado al portapapeles", "success")}}
+                                        className="absolute top-4 right-4 bg-gray-700/50 hover:bg-gray-600 text-gray-300 p-2 rounded-lg backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                        title="Copiar Código"
+                                    >
+                                        <Code size={16} />
+                                    </button>
+
+                                    <pre className="!m-0 !p-6 !bg-transparent !font-mono !text-sm min-h-full" style={{tabSize: 4}}>
+                                        <code ref={codeRef} className="language-python">
+                                            {pythonCode}
+                                        </code>
+                                    </pre>
+                                </div>
+                            }
                         </div>
                     </div>
                     <div className="h-40 border-t border-gray-700 flex flex-col bg-black shrink-0"><div className="bg-gray-800 text-[10px] uppercase font-bold tracking-wider px-3 py-1 text-gray-400 border-b border-gray-700 flex justify-between"><span>Terminal</span><button onClick={()=>setLogs([])} className="hover:text-white">Clear</button></div><TerminalLog logs={logs} /></div>
