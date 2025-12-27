@@ -24,7 +24,6 @@ from core import ml_manager
 
 # Directorios base
 PROJECTS_DIR = "./projects"
-BACKUP_DIR = "./backups"
 TRASH_DIR = "./trash"
 MODELS_DIR = "./models"
 DATASETS_DIR = "./datasets"
@@ -34,7 +33,7 @@ DATASETS_DIR = "./datasets"
 
 def ensure_dir_exist():
     """Garantiza que todas las carpetas esenciales existan."""
-    for path in [PROJECTS_DIR, BACKUP_DIR, TRASH_DIR, MODELS_DIR, DATASETS_DIR]:
+    for path in [PROJECTS_DIR, TRASH_DIR, MODELS_DIR, DATASETS_DIR]:
         os.makedirs(path, exist_ok=True)
 
 def _get_path(directory: str, name: str, extension: str) -> str:
