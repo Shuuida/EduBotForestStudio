@@ -161,7 +161,11 @@
             Box: (p) => <IconBase {...p}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></IconBase>,
             Package: (p) => <IconBase {...p}><path d="m16.5 9.4-9-5.19"/><path d="m21 16-9 5.19-9-5.19V7l9-5.19 9 5.19z"/><line x1="12" y1="22" x2="12" y2="13"/><line x1="12" y1="13" x2="3.27" y2="8"/><line x1="12" y1="13" x2="20.73" y2="8"/></IconBase>,
             AlertTriangle: (p) => <IconBase {...p}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></IconBase>,
-            FileWarning: (p) => <IconBase {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 13v4"/><path d="M12 21h.01"/></IconBase>
+            FileWarning: (p) => <IconBase {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 13v4"/><path d="M12 21h.01"/></IconBase>,
+            Settings: (p) => <IconBase {...p}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></IconBase>,
+            Monitor: (p) => <IconBase {...p}><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></IconBase>,
+            Share2: (p) => <IconBase {...p}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></IconBase>,
+            X: (p) => <IconBase {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></IconBase>
         };
 
         const { 
@@ -169,7 +173,8 @@
             Terminal, Trash2, Save, FolderOpen, Code, Layers, FileJson, 
             ArrowRight, Variable, FunctionSquare, Repeat, Split, XCircle, 
             Keyboard, RefreshCw, Calculator, CheckSquare, ArrowLeft, 
-            Activity, Box, Package, AlertTriangle, FileWarning 
+            Activity, Box, Package, AlertTriangle, FileWarning,
+            Settings, Monitor, Share2, X
         } = Icons;
 
         // ----------------------------------------------------------------------
@@ -522,6 +527,67 @@
             py_try: ({ data, id }) => <BaseNode title="Try/Except" icon={AlertTriangle} color="bg-amber-600"><div className="text-xs text-gray-300">Errors handled below</div></BaseNode>
         };
 
+
+        // ----------------------------------------------------------------------
+        // COMPONENTE MODAL PERSONALIZADO (Reemplazo de prompt/alert)
+        // ----------------------------------------------------------------------
+        const CustomModal = ({ isOpen, type, title, message, onConfirm, onCancel }) => {
+            const [inputVal, setInputVal] = useState("");
+
+            // Resetear input cuando se abre
+            useEffect(() => { if (isOpen) setInputVal(""); }, [isOpen]);
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-gray-800 border border-gray-600 rounded-xl shadow-2xl w-96 p-6 transform transition-all scale-100">
+                        {/* Cabecera */}
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="bg-blue-600 p-2 rounded-lg">
+                                {type === 'prompt' || type === 'confirm' ? <Save size={20} className="text-white"/> : <AlertTriangle size={20} className="text-white"/>}
+                            </div>
+                            <h3 className="text-lg font-bold text-white">{title || "EduBot Forest Studio"}</h3>
+                        </div>
+
+                        {/* Mensaje */}
+                        <p className="text-gray-300 text-sm mb-4">{message}</p>
+
+                        {/* Input (Solo si es tipo prompt) */}
+                        {type === 'prompt' && (
+                            <input 
+                                autoFocus
+                                type="text" 
+                                className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white outline-none focus:border-blue-500 mb-6 transition-colors"
+                                placeholder="Escribe aquí..."
+                                value={inputVal}
+                                onChange={(e) => setInputVal(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(inputVal); }}
+                            />
+                        )}
+
+                        {/* Botones */}
+                        <div className="flex justify-end gap-3">
+                            {type !== 'alert' && (
+                                <button 
+                                    onClick={onCancel}
+                                    className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                            )}
+                            <button 
+                                onClick={() => type === 'prompt' ? onConfirm(inputVal) : onConfirm()}
+                                className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/20 transition-all"
+                            >
+                                {type === 'alert' ? 'Entendido' : 'Aceptar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const WelcomeScreen = ({ onNew, onOpen }) => (
             <div className="h-full flex flex-col items-center justify-center bg-gray-900 text-white relative overflow-hidden">
                 <div className="absolute inset-0 opacity-10 pointer-events-none">
@@ -564,6 +630,161 @@
             );
         };
 
+        const SettingsModal = ({ isOpen, onClose, prefs, setPrefs }) => {
+            if (!isOpen) return null;
+
+            const handleChange = (key, value) => {
+                const newPrefs = { ...prefs, [key]: value };
+                setPrefs(newPrefs);
+                localStorage.setItem('edubot_preferences', JSON.stringify(newPrefs));
+            };
+
+            return (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-[600px] overflow-hidden flex flex-col max-h-[85vh]">
+                        
+                        {/* Cabecera */}
+                        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800">
+                            <h2 className="text-white font-bold flex items-center gap-2">
+                                <Settings size={20} /> Preferencias de EduBot
+                            </h2>
+                            <button onClick={onClose} className="text-gray-400 hover:text-white">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Cuerpo con Scroll */}
+                        <div className="p-6 overflow-y-auto space-y-8 text-sm text-gray-300">
+                            
+                            {/* SECCIÓN 1: INTERFAZ GLOBAL */}
+                            <div>
+                                <h3 className="text-green-400 font-bold uppercase text-xs mb-3 flex items-center gap-2">
+                                    <Monitor size={14}/> Interfaz y Accesibilidad
+                                </h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="col-span-2 flex justify-between items-center bg-gray-800/50 p-2 rounded">
+                                        <label>Escala de Interfaz (Zoom)</label>
+                                        <div className="flex items-center gap-3">
+                                            <input 
+                                                type="range" min="80" max="130" step="5"
+                                                value={prefs.uiScale}
+                                                onChange={(e) => handleChange('uiScale', e.target.value)}
+                                                className="accent-blue-500 w-32"
+                                            />
+                                            <span className="w-10 text-right font-mono">{prefs.uiScale}%</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded">
+                                        <label>Fuente Dislexia</label>
+                                        <input type="checkbox" checked={prefs.dyslexicFont} 
+                                            onChange={(e) => handleChange('dyslexicFont', e.target.checked)} className="accent-blue-500 w-4 h-4"/>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded">
+                                        <label>Reducir Movimiento</label>
+                                        <input type="checkbox" checked={prefs.reduceMotion} 
+                                            onChange={(e) => handleChange('reduceMotion', e.target.checked)} className="accent-blue-500 w-4 h-4"/>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr className="border-gray-700" />
+
+                            {/* SECCIÓN 2: EDITOR DE CÓDIGO */}
+                            <div>
+                                <h3 className="text-blue-400 font-bold uppercase text-xs mb-3 flex items-center gap-2">
+                                    <Code size={14}/> Editor de Código
+                                </h3>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded">
+                                        <label>Tamaño de Fuente</label>
+                                        <select value={prefs.editorFontSize} onChange={(e) => handleChange('editorFontSize', e.target.value)}
+                                            className="bg-gray-700 border border-gray-600 rounded p-1 text-white text-xs">
+                                            <option value="12">Pequeña (12px)</option>
+                                            <option value="14">Normal (14px)</option>
+                                            <option value="16">Grande (16px)</option>
+                                            <option value="18">Enorme (18px)</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded">
+                                        <label>Ajuste de Línea (Word Wrap)</label>
+                                        <input type="checkbox" checked={prefs.wordWrap} 
+                                            onChange={(e) => handleChange('wordWrap', e.target.checked)} className="accent-blue-500 w-4 h-4"/>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded">
+                                        <label>Números de Línea</label>
+                                        <input type="checkbox" checked={prefs.lineNumbers} 
+                                            onChange={(e) => handleChange('lineNumbers', e.target.checked)} className="accent-blue-500 w-4 h-4"/>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr className="border-gray-700" />
+
+                            {/* SECCIÓN 3: EDITOR DE NODOS (FOREST) */}
+                            <div>
+                                <h3 className="text-purple-400 font-bold uppercase text-xs mb-3 flex items-center gap-2">
+                                    <Share2 size={14}/> Editor de Nodos
+                                </h3>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded">
+                                        <label>Ajustar a Cuadrícula (Snap)</label>
+                                        <input type="checkbox" checked={prefs.snapToGrid} 
+                                            onChange={(e) => handleChange('snapToGrid', e.target.checked)} className="accent-blue-500 w-4 h-4"/>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded">
+                                        <label>Mostrar Minimapa</label>
+                                        <input type="checkbox" checked={prefs.showMinimap} 
+                                            onChange={(e) => handleChange('showMinimap', e.target.checked)} className="accent-blue-500 w-4 h-4"/>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded">
+                                        <label>Estilo de Conexión</label>
+                                        <select value={prefs.connectionStyle} onChange={(e) => handleChange('connectionStyle', e.target.value)}
+                                            className="bg-gray-700 border border-gray-600 rounded p-1 text-white text-xs">
+                                            <option value="default">Bezier (Curvo)</option>
+                                            <option value="straight">Recto</option>
+                                            <option value="step">Escalonado (Step)</option>
+                                            <option value="smoothstep">Suave (Smooth)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr className="border-gray-700" />
+
+                            {/* SECCIÓN 4: SISTEMA */}
+                            <div>
+                                <h3 className="text-red-400 font-bold uppercase text-xs mb-3 flex items-center gap-2">
+                                    <Cpu size={14}/> Sistema
+                                </h3>
+                                <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded mb-2">
+                                    <label>Tutorial de Bienvenida</label>
+                                    <button onClick={() => { localStorage.removeItem('edubot_tutorial_completed'); alert("Tutorial reiniciado."); }}
+                                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-white border border-gray-600">
+                                        Reiniciar Tutorial
+                                    </button>
+                                </div>
+                                <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded">
+                                    <label className="text-red-300">Zona de Peligro</label>
+                                    <button onClick={() => { if(confirm("¿Borrar todas las preferencias y reiniciar?")) { localStorage.clear(); location.reload(); } }}
+                                        className="px-3 py-1 bg-red-900/50 hover:bg-red-800 text-red-200 rounded text-xs border border-red-800">
+                                        Borrar Todo (Factory Reset)
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 bg-gray-800 border-t border-gray-700 flex justify-end">
+                            <button onClick={onClose} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-lg">
+                                Aplicar y Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const EditorContent = ({ mode, onBack, initialNodes, initialEdges, currentName, setCurrentName }) => {
             const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes || []);
             const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges || []);
@@ -578,6 +799,50 @@
             const reactFlowWrapper = useRef(null);
             const trainNode = nodes.find(n => n.type.startsWith('ml_train'));
             const activeModelType = trainNode ? trainNode.type : null;
+            const [prefs, setPrefs] = useState({
+                // UI
+                uiScale: '100',
+                dyslexicFont: false,
+                reduceMotion: false,
+                // EDITOR
+                editorFontSize: '14',
+                wordWrap: false,
+                lineNumbers: true,
+                // NODOS
+                snapToGrid: true,
+                showMinimap: false,
+                connectionStyle: 'default' // default, straight, step, smoothstep
+            });
+            const [showSettings, setShowSettings] = useState(false);
+
+            useEffect(() => {
+                const root = document.documentElement;
+                root.style.setProperty('--editor-font-size', `${prefs.editorFontSize}px`);
+                document.body.style.zoom = `${prefs.uiScale}%`;
+                
+                // Dislexia
+                if (prefs.dyslexicFont) {
+                    document.body.style.fontFamily = 'Verdana, sans-serif'; 
+                    document.body.style.letterSpacing = '0.5px';
+                } else {
+                    document.body.style.fontFamily = ''; 
+                    document.body.style.letterSpacing = '';
+                }
+
+                // Reducir Movimiento
+                if (prefs.reduceMotion) {
+                    root.style.setProperty('--animate-connection', 'none');
+                    const styles = document.getElementById('motion-reduce-style') || document.createElement('style');
+                    styles.id = 'motion-reduce-style';
+                    styles.innerHTML = prefs.reduceMotion ? `* { animation: none !important; transition: none !important; }` : '';
+                    document.head.appendChild(styles);
+                } else {
+                    // Limpieza si se desactiva
+                    const styles = document.getElementById('motion-reduce-style');
+                    if(styles) styles.innerHTML = '';
+                }
+
+            }, [prefs]);
 
             const addLog = (msg, type = 'info') => setLogs(p => [...p, { time: new Date().toLocaleTimeString(), msg, type }]);
             
@@ -655,6 +920,14 @@
                 }
             };
 
+            // ESTADO PARA EL MODAL
+            const [modalConfig, setModalConfig] = useState({ 
+                isOpen: false, type: 'prompt', title: '', message: '', 
+                onConfirm: () => {}, onCancel: () => {} 
+            });
+
+            const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
+
             const exportToC = async () => {
                 const mn = nodes.find(n => n.type.includes('ml_train'));
                 if(!mn) { addLog("Error: No hay ningún modelo de entrenamiento en el bosque.", 'error'); return; }
@@ -681,16 +954,41 @@
             };
 
             const saveProject = async () => {
-                let name = currentName;
-                if (!name) { name = prompt("Nombre para guardar:"); if (!name) return; }
+            // Función real de guardado (se ejecutará después del modal)
+            const performSave = async (name) => {
+                closeModal();
+                if (!name) return;
+
                 const data = { blocks: nodes.map(n=>({...n, type:n.type})), edges, mode };
                 try {
                     let res;
-                    if (mode === 'ml') { res = await window.eel.api_save_model_file(data, name)(); if (res.success) addLog(`Modelo ML guardado: ${name}.edubotml`, 'success'); } 
-                    else { res = await window.eel.api_save_project(data, name)(); if (res.success) addLog(`Proyecto guardado: ${name}.edubotproj`, 'success'); }
-                    if (res.success) { setCurrentName(name); } else { addLog(`Error guardando: ${res.error}`, 'error'); }
+                    if (mode === 'ml') { 
+                        res = await window.eel.api_save_model_file(data, name)(); 
+                        if (res.success) addLog(`Modelo ML guardado: ${name}.edubotml`, 'success'); 
+                    } else { 
+                        res = await window.eel.api_save_project(data, name)(); 
+                        if (res.success) addLog(`Proyecto guardado: ${name}.edubotproj`, 'success'); 
+                    }
+
+                    if (res.success) { setCurrentName(name); } 
+                    else { addLog(`Error guardando: ${res.error}`, 'error'); }
                 } catch(e) { addLog(e, 'error'); }
             };
+
+            // Si ya tiene nombre, guardamos directo. Si no, abrimos modal.
+            if (currentName) {
+                performSave(currentName);
+            } else {
+                setModalConfig({
+                    isOpen: true,
+                    type: 'prompt',
+                    title: 'Guardar Proyecto',
+                    message: 'Ingresa un nombre para tu archivo:',
+                    onConfirm: (val) => performSave(val), // Recibe el valor del input
+                    onCancel: closeModal
+                });
+            }
+        };
 
             const trashProject = async () => {
                 if (!currentName) {
@@ -707,7 +1005,7 @@
             };
 
             useEffect(() => { if (activeTab === 'code' && codeRef.current && window.Prism) { window.Prism.highlightElement(codeRef.current); } }, [activeTab, pythonCode]);
-            useEffect(() => { const hasSeenTutorial = localStorage.getItem('edubot_tutorial_completed'); if (!hasSeenTutorial) { setShowTutorial(true); } }, []);
+            //useEffect(() => { const hasSeenTutorial = localStorage.getItem('edubot_tutorial_completed'); if (!hasSeenTutorial) { localStorage.setItem('edubot_tutorial_completed', 'true'); setShowTutorial(true); } }, []);
             const finishTutorial = () => { localStorage.setItem('edubot_tutorial_completed', 'true'); setShowTutorial(false); };
 
             return (
@@ -725,9 +1023,11 @@
                             </div>
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={deleteSelected} className="p-2 rounded hover:bg-red-900/30 text-red-400"><Trash2 size={18}/></button>
-                            <button onClick={saveProject} className="p-2 rounded hover:bg-blue-900/30 text-blue-400"><Save size={18}/></button>
+                            <button onClick={deleteSelected} title="Borrar un nodo del lienzo" className="p-2 rounded hover:bg-red-900/30 text-red-400"><Trash2 size={18}/></button>
+                            <button onClick={saveProject} title="Guardar el avance del proyecto" className="p-2 rounded hover:bg-blue-900/30 text-blue-400"><Save size={18}/></button>
                             <button onClick={trashProject} title="Mover Proyecto a Papelera" className="p-2 rounded hover:bg-red-900/40 text-red-500 transition-colors border border-transparent hover:border-red-500/50"><FileWarning size={18}/></button>
+                            <button onClick={() => setShowSettings(true)} className="p-2 rounded hover:bg-gray-700 text-gray-400 hover:text-white mr-2" title="Preferencias"> <Settings size={18} /> </button>
+                            <button onClick={() => setShowTutorial(true)} className="p-2 rounded hover:bg-gray-700 text-yellow-400 mr-2" title="Ver Tutorial"><span className="text-xs font-bold border border-yellow-400 rounded-full w-5 h-5 flex items-center justify-center">?</span></button>
                             <div className="h-6 w-px bg-gray-700 mx-1"></div>
                             {mode==='ml' && (<><button onClick={checkMemory} className="bg-gray-800 px-3 py-1.5 rounded text-xs text-gray-300 border border-gray-700 hover:border-gray-600 flex gap-2"><Cpu size={14}/> Memoria</button><button onClick={exportToC} className="bg-gray-800 px-3 py-1.5 rounded text-xs text-gray-300 border border-gray-700 hover:border-gray-600 flex gap-2"><Cpu size={14}/> Exportar C</button></>)}
                             <button onClick={runPipeline} className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded text-sm font-semibold flex items-center gap-2 shadow-lg"><Play size={16} fill="currentColor"/> Ejecutar</button>
@@ -771,7 +1071,7 @@
                             {mode==='ml' && memoryStats && <div className="p-3 bg-gray-800 border-t border-gray-700 text-[10px] font-mono"><div>Flash: {memoryStats.flash_percent}%</div></div>}
                         </div>
                         <div className="flex-1 relative bg-[#1e1e1e]" ref={reactFlowWrapper}>
-                            {activeTab==='forest' ? <div className="h-full w-full"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} edgeTypes={edgeTypes} onInit={setReactFlowInstance} onDrop={onDrop} onDragOver={onDragOver} nodeTypes={nodeTypes} fitView snapToGrid snapGrid={[15,15]}><Background color="#333" gap={20} /><Controls className="bg-gray-800 border-gray-700 fill-white text-white" /></ReactFlow></div> :
+                            {activeTab==='forest' ? <div className="h-full w-full"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} edgeTypes={edgeTypes} onInit={setReactFlowInstance} onDrop={onDrop} onDragOver={onDragOver} nodeTypes={nodeTypes} fitView snapToGrid={prefs.snapToGrid} snapGrid={[15,15]} connectionLineType={prefs.connectionStyle}> {prefs.showMinimap && <RFObj.MiniMap style={{background:'#1a1a1a'}} nodeStrokeColor="#555" />} <Background color="#333" gap={20} /><Controls className="bg-gray-800 border-gray-700 fill-white text-white" /></ReactFlow></div> :
                              activeTab==='simulation' && mode==='ml' ? <SimulationView active={simulationStatus.active} status={simulationStatus.status} modelType={activeModelType} /> :
                              <div className="h-full w-full relative bg-[#1d1f21] overflow-auto custom-scrollbar group">
                                     <button onClick={() => {navigator.clipboard.writeText(pythonCode); addLog("Código copiado al portapapeles", "success")}} className="absolute top-4 right-4 bg-gray-700/50 hover:bg-gray-600 text-gray-300 p-2 rounded-lg backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Copiar Código"><Code size={16} /></button>
@@ -781,6 +1081,8 @@
                         </div>
                     </div>
                     <div className="h-40 border-t border-gray-700 flex flex-col bg-black shrink-0"><div className="bg-gray-800 text-[10px] uppercase font-bold tracking-wider px-3 py-1 text-gray-400 border-b border-gray-700 flex justify-between"><span>Terminal</span><button onClick={()=>setLogs([])} className="hover:text-white">Clear</button></div><TerminalLog logs={logs} /></div>
+                    <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} prefs={prefs} setPrefs={setPrefs}/>
+                    <CustomModal {...modalConfig} />
                 </div>
             );
         };
@@ -799,18 +1101,71 @@
             const [initialData, setInitialData] = useState(null);
             const [currentName, setCurrentName] = useState(null);
 
-            const handleNewProject = (selectedMode) => { setMode(selectedMode); setInitialData(null); setCurrentName(null); setView('editor'); };
-            const handleOpenProject = async () => {
-                const name = prompt("Nombre del archivo a abrir:"); 
-                if(!name) return;
-                try { 
-                    const data = await window.eel.api_load_project(name)(); 
-                    if(data && !data.error) { setMode(data.mode || 'ml'); setInitialData(data); setCurrentName(data._found_name || name); setView('editor'); } 
-                    else alert("Error: " + (data.error || "No se pudo cargar"));
-                } catch(e) { console.error(e); }
+            const [modalConfig, setModalConfig] = useState({ 
+                isOpen: false, type: 'prompt', title: '', message: '', 
+                onConfirm: () => {}, onCancel: () => {} 
+            });
+
+            const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
+            // ------------------------------------------------------------------
+
+            const handleNewProject = (selectedMode) => { 
+                setMode(selectedMode); 
+                setInitialData(null); 
+                setCurrentName(null); 
+                setView('editor'); 
             };
 
-            return view === 'welcome' ? <WelcomeScreen onNew={handleNewProject} onOpen={handleOpenProject} /> : <Editor mode={mode} onBack={() => setView('welcome')} initialNodes={initialData?.blocks} initialEdges={initialData?.edges} currentName={currentName} setCurrentName={setCurrentName} />;
+            const handleOpenProject = () => {
+                setModalConfig({
+                    isOpen: true,
+                    type: 'prompt',
+                    title: 'Abrir Proyecto',
+                    message: 'Escribe el nombre del archivo a cargar:',
+                    onConfirm: async (name) => {
+                        closeModal();
+                        if(!name) return;
+                        try { 
+                            const data = await window.eel.api_load_project(name)(); 
+                            if(data && !data.error) { 
+                                setMode(data.mode || 'ml'); 
+                                setInitialData(data); 
+                                setCurrentName(data._found_name || name); 
+                                setView('editor'); 
+                            } else {
+                                // Reutilizamos el modal para mostrar error
+                                setTimeout(() => setModalConfig({
+                                   isOpen: true, type: 'alert', title: 'Error', 
+                                   message: "Error: " + (data.error || "No se pudo cargar"),
+                                   onConfirm: closeModal
+                                }), 100);
+                            }
+                        } catch(e) { console.error(e); }
+                    },
+                    onCancel: closeModal
+                });
+            };
+
+            return (
+                <>
+                    {view === 'welcome' ? (
+                        <WelcomeScreen onNew={handleNewProject} onOpen={handleOpenProject} />
+                    ) : (
+                        <Editor 
+                            mode={mode} 
+                            onBack={() => setView('welcome')} 
+                            initialNodes={initialData?.blocks} 
+                            initialEdges={initialData?.edges} 
+                            currentName={currentName} 
+                            setCurrentName={setCurrentName} 
+                        />
+                    )}
+                    
+                    {/* Renderizamos el modal solo si estamos en la vista 'welcome' */}
+                    {/* (El Editor tiene su propio modal interno) */}
+                    {view === 'welcome' && <CustomModal {...modalConfig} />}
+                </>
+            );
         };
 
         const root = createRoot(document.getElementById('root'));

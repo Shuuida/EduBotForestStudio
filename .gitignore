@@ -29,3 +29,4 @@ firmware_export.json
 .vscode/
 .idx/
 test_outputs/
+.ipynb_checkpoints/

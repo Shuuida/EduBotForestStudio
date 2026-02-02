@@ -591,7 +591,7 @@ class MiniNeuralNetwork:
         code.append(v2c(f"{fn_name}_B2", self.B2))
         
         code.append(f"\nvoid {fn_name}(float* in, float* out) {{")
-        code.append(f"  float h[{self.n_hid}];")
+        code.append(f"  static float h[{self.n_hid}];")
         code.append(f"  for(int i=0; i<{self.n_hid}; i++) {{ float s=pgm_read_float_near({fn_name}_B1+i);")
         code.append(f"    for(int j=0; j<{self.n_in}; j++) s+=in[j]*pgm_read_float_near({fn_name}_W1 + i*{self.n_in}+j);")
         code.append(f"    h[i] = 1.0/(1.0+exp(-s)); }}")

@@ -1,7 +1,15 @@
-fastapi==0.115.2
-uvicorn==0.32.0
-RestrictedPython==8.1
-PyYAML==6.0.2
-websockets==13.1
-flask==3.0.0
-requests==2.31.0
+# NÚCLEO DE LA UI
+eel==0.16.0               
+bottle==0.12.25           
+bottle-websocket==0.2.9   
+
+# BACKEND
+flask==3.0.0              
+flask-cors==4.0.0         
+requests==2.31.0         
+
+# UTILIDADES
+PyYAML==6.0.2             
+
+# EMPAQUETADO
+pyinstaller==6.3.0        

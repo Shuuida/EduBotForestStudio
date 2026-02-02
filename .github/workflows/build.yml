@@ -1,0 +1,32 @@
+name: Build EduBot Linux
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-20.04
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --noconfirm --onefile --windowed --name "EduBotLab" --add-data "web:web" --hidden-import="bottle_websocket" --hidden-import="engineio.async_drivers.threading" main.py
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: EduBotLab-Linux
+        path: dist/EduBotLab

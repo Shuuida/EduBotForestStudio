@@ -12,6 +12,7 @@ Correcciones:
 
 import os
 import json
+import sys
 #import shutil
 from datetime import datetime
 from typing import Any, Dict, List
@@ -22,18 +23,31 @@ from core import ml_manager
 #from core import ml_struct_rules
 #from core import ml_adapter
 
+#-----------------------------------------------
+# Función para obtener la ruta real donde está el .exe
+def get_base_path():
+    if getattr(sys, 'frozen', False):
+        # Si estamos ejecutando desde el .exe (PyInstaller)
+        return os.path.dirname(sys.executable)
+    else:
+        # Si estamos ejecutando desde código fuente
+        return os.path.dirname(os.path.abspath(__file__))
+
+BASE_PATH = get_base_path()
+
 # Directorios base
-PROJECTS_DIR = "./projects"
-TRASH_DIR = "./trash"
-MODELS_DIR = "./models"
-DATASETS_DIR = "./datasets"
+PROJECTS_DIR = os.path.join(BASE_PATH, "projects")
+MODELS_DIR = os.path.join(BASE_PATH, "models")
+DATASETS_DIR = os.path.join(BASE_PATH, "datasets")
+EXPORTS_DIR = os.path.join(BASE_PATH, "exports")
+TRASH_DIR = os.path.join(BASE_PATH, "trash")
 
 # ---------------------------------------------
 # UTILIDADES BÁSICAS
 
 def ensure_dir_exist():
     """Garantiza que todas las carpetas esenciales existan."""
-    for path in [PROJECTS_DIR, TRASH_DIR, MODELS_DIR, DATASETS_DIR]:
+    for path in [PROJECTS_DIR, TRASH_DIR, MODELS_DIR, DATASETS_DIR, EXPORTS_DIR]:
         os.makedirs(path, exist_ok=True)
 
 def _get_path(directory: str, name: str, extension: str) -> str:

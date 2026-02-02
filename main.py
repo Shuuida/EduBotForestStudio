@@ -9,6 +9,8 @@ de backend de EduBot en server.py.
 
 import eel
 import os
+import sys
+import platform
 import shutil
 import json
 #import yaml
@@ -23,11 +25,27 @@ from core.executor import execute_user_code
 from core import ml_manager
 from estimators import memory_estimator
 
+
+BASE_PATH = file_handler.BASE_PATH
+# Definir ruta al navegador portable (dentro del proyecto)
+if platform.system() == "Windows":
+    BROWSER_PATH = os.path.join(BASE_PATH, "chromium", "chrome.exe")
+else:
+    # Asumimos Linux/Mac
+    BROWSER_PATH = os.path.join(BASE_PATH, "chromium", "chrome")
+
+# Configurar Eel para usar este navegador Específico
+if os.path.exists(BROWSER_PATH):
+    print(f"[INFO] Usando Chromium Portable: {BROWSER_PATH}")
+    eel.browsers.set_path('chrome', BROWSER_PATH)
+else:
+    print("[WARN] Chromium portable no encontrado. Intentando navegador del sistema...")
+
 # Inicialización de Eel
 # Aseguramos que la carpeta web exista
 if not os.path.exists('web'):
     print("[ERROR CRÍTICO] La carpeta 'web' no existe. Asegúrate de haber creado el index.html allí.")
-    exit()
+    sys.exit()
 
 # Inicializamos apuntando a la carpeta donde está index.html
 eel.init('web')
@@ -391,26 +409,49 @@ def api_export_c_model(model_name):
 # PUNTO DE ENTRADA PRINCIPAL
 
 if __name__ == "__main__":
-    print("---------------------------------------------------")
-    print("Iniciando EduBot Forest Studio...")
-    print("Backend integrado listo. Abriendo interfaz...")
-    print("👉 Abre esta dirección en tu navegador: http://localhost:8080")
-    print("---------------------------------------------------")
 
-    # Aseguramos directorios críticos
-    os.makedirs("exports", exist_ok=True)
-    file_handler.ensure_dir_exist()
-
-    # Iniciamos la App
     try:
-        eel.start(
-                    'index.html',
-                    mode=None,           # IMPORTANTE: No intentar abrir navegador automático (falla en nube)
-                    host='localhost',    # IMPORTANTE: Escuchar en todas las interfaces para que el Proxy de Google entre
-                    port=8080,           # IMPORTANTE: Puerto fijo para configurar el Port Forwarding
-                    block=True           # Mantiene el script corriendo
-                )
-    except EnvironmentError:
-        # Si no encuentra Chrome/Edge, intenta abrir en el navegador del sistema con fallback
-        print("Navegador no detectado automáticamente. Intentando modo fallback...")
-        eel.start('index.html', mode='user_default', size=(1280, 800), host='localhost', port=8080, block=True)
+        os.chdir(file_handler.BASE_PATH)
+        PROFILE_PATH = os.path.join(file_handler.BASE_PATH, 'browser_profile')
+
+        print("---------------------------------------------------")
+        print("Iniciando EduBot Forest Studio...")
+        print("Backend integrado listo. Abriendo interfaz...")
+        print("👉 Abre esta dirección en tu navegador: http://localhost:8080")
+        print("---------------------------------------------------")
+
+        # Aseguramos directorios críticos
+        file_handler.ensure_dir_exist()
+
+        # Iniciamos la App
+        try:
+            eel.start(
+                'index.html',
+                mode='chrome',       # Al haber hecho set_path, 'chrome' ahora apunta al portable
+                host='localhost',
+                port=0,              # Puerto 0 elige un puerto libre aleatorio (vital para evitar conflictos)
+                size=(1280, 800),    # Tamaño inicial de la ventana
+                # Flags para evitar errores en entornos restringidos (Liceos)
+                cmdline_args=[
+                    '--no-sandbox', 
+                    '--disable-http-cache',
+                    f'--user-data-dir={PROFILE_PATH}',
+                    '--disable-gpu' if False else '', # A veces necesario en PCs viejas
+                    '--kiosk' if False else ''
+                ]
+            )
+        except EnvironmentError:
+            # Fallback si no hay Chrome/Edge instalado: abrir en navegador por defecto
+            eel.start('index.html', mode='user_default', host='localhost', port=8080, size=(1280, 800))
+
+    except Exception as e:
+        import traceback
+        error_msg = f"ERROR FATAL DE EDUBOT:\n{str(e)}\n\n{traceback.format_exc()}"
+        with open("crash_log.txt", "w", encoding="utf-8") as f:
+            f.write(error_msg)
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(0, f"EduBot falló al iniciar. Revisa crash_log.txt\n\nError: {str(e)}", "Error Fatal", 0x10)
+        except:
+            pass
+        sys.exit(1)
