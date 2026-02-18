@@ -171,6 +171,25 @@ def ml_eval_block_to_code(block: Dict[str, Any]) -> str:
     except Exception as e:
         return f"# Error en ml_eval_block_to_code: {e}\n"
 
+def ml_validator_block_to_code(block: Dict[str, Any]) -> str:
+    try:
+        challenge_id = block.get('challenge_id', 'reto_ml_1')
+        target = block.get('target', 'acc')
+        expected = block.get('expected', '0.8')
+        operator = block.get('operator', '>=')
+        
+        return (
+            f"# --- VALIDACIÓN ML: {challenge_id} ---\n"
+            f"if float({target}) {operator} float({expected}):\n"
+            f"    print('EDUBOT_VAL_PASS|{challenge_id}')\n"
+            f"    print('✅ [Validador ML] ¡Métrica de modelo alcanzada!')\n"
+            f"else:\n"
+            f"    print('EDUBOT_VAL_FAIL|{challenge_id}')\n"
+            f"    print('❌ [Validador ML] El modelo no alcanza el rendimiento esperado.')\n"
+        )
+    except Exception as e:
+        return f"# Error en ml_validator_block_to_code: {e}\n"
+
 # Registro Maestro
 BLOCK_TO_CODE = {
     'ml_dataset': ml_dataset_block_to_code,
@@ -183,6 +202,7 @@ BLOCK_TO_CODE = {
     'ml_predict': ml_predict_block_to_code,
     'ml_eval': ml_eval_block_to_code,
     'ml_eval_ext': ml_eval_block_to_code, # Alias
+    'ml_validator': ml_validator_block_to_code,
 }
 
 def get_ml_code(block: Dict[str, Any]) -> str:

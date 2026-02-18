@@ -24,6 +24,10 @@ from storage import file_handler
 from core.executor import execute_user_code
 from core import ml_manager
 from estimators import memory_estimator
+import maker_edu.auth
+import maker_edu.autograder
+import maker_edu.dashboard
+
 
 
 BASE_PATH = file_handler.BASE_PATH

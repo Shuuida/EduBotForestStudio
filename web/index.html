@@ -358,6 +358,107 @@
             );
         };
 
+        // MÓDULO DE SEGURIDAD: ESTUDIANTE / PROFESOR
+
+        const StudentAuth = ({ onOpenTeacherDashboard }) => {
+            const [role, setRole] = useState(localStorage.getItem('edubot_role') || 'student');
+            const [studentName, setStudentName] = useState(localStorage.getItem('edubot_student_name') || '');
+            const [isEditingName, setIsEditingName] = useState(!studentName && role === 'student');
+
+            const handleSaveName = (e) => {
+                if (e.key === 'Enter' || e.type === 'blur') {
+                    if (studentName.trim()) {
+                        localStorage.setItem('edubot_student_name', studentName.trim());
+                        setIsEditingName(false);
+                    }
+                }
+            };
+
+            const handleLogout = () => {
+                localStorage.removeItem('edubot_role');
+                setRole('student');
+                window.location.reload(); // Recarga la app monolítica
+            };
+
+            if (role === 'teacher') {
+                return (
+                    <div className="flex items-center gap-3 bg-indigo-900/40 border border-indigo-500/50 px-3 py-1.5 rounded-lg">
+                        <span className="text-xs font-bold text-indigo-300">Modo Profesor</span>
+                        <button onClick={onOpenTeacherDashboard} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded transition-colors">Dashboard</button>
+                        <button onClick={handleLogout} className="text-xs text-red-400 hover:text-red-300 ml-2">Salir</button>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex items-center gap-2 bg-gray-800/50 border border-gray-700 px-3 py-1.5 rounded-lg">
+                    <Users size={14} className="text-blue-400" />
+                    {isEditingName ? (
+                        <input 
+                            autoFocus
+                            type="text" 
+                            className="bg-gray-900 border border-blue-500 text-white text-xs px-2 py-0.5 rounded outline-none w-32"
+                            placeholder="Tu nombre..."
+                            value={studentName}
+                            onChange={(e) => setStudentName(e.target.value)}
+                            onBlur={handleSaveName}
+                            onKeyDown={handleSaveName}
+                        />
+                    ) : (
+                        <span 
+                            className="text-xs font-bold text-gray-200 cursor-pointer hover:text-blue-400"
+                            onClick={() => setIsEditingName(true)}
+                            title="Clic para cambiar nombre"
+                        >
+                            {studentName || "Estudiante"}
+                        </span>
+                    )}
+                </div>
+            );
+        };
+
+        const TeacherDashboard = ({ onClose }) => {
+            // Datos simulados (Luego los conectaremos con Eel para leer grades.json)
+            const [grades, setGrades] = useState([
+                { student: "Carlos Perez", challenge: "RETO_01", status: "Aprobado (100)", date: "10:45 AM" }
+            ]);
+
+            return (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-gray-900 border border-indigo-500/50 rounded-xl shadow-2xl w-[600px] overflow-hidden">
+                        <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-800/50">
+                            <h2 className="text-white font-bold flex items-center gap-2">
+                                <Users size={20} className="text-indigo-400" /> Panel del Profesor
+                            </h2>
+                            <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20} /></button>
+                        </div>
+                        <div className="p-6">
+                            <table className="w-full text-left text-sm text-gray-400">
+                                <thead className="text-xs text-gray-500 uppercase bg-gray-800">
+                                    <tr>
+                                        <th className="px-4 py-3 rounded-tl-lg">Estudiante</th>
+                                        <th className="px-4 py-3">Reto</th>
+                                        <th className="px-4 py-3">Estado</th>
+                                        <th className="px-4 py-3 rounded-tr-lg">Hora</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {grades.map((g, i) => (
+                                        <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                            <td className="px-4 py-3 font-medium text-gray-200">{g.student}</td>
+                                            <td className="px-4 py-3 text-blue-400 font-mono">{g.challenge}</td>
+                                            <td className={`px-4 py-3 font-bold ${g.status.includes('Aprobado') ? 'text-green-500' : 'text-red-500'}`}>{g.status}</td>
+                                            <td className="px-4 py-3 text-xs">{g.date}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const SimulationView = ({ active, status, modelType }) => {
             const stateClass = status === 'error' ? 'error' : active ? 'active' : 'idle';
             const DataParticle = ({ pathId, delay = 0, duration = 1.5, repeat = "indefinite" }) => (

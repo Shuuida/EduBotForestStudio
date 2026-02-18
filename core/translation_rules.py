@@ -133,6 +133,23 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
     # Otros
     if b_type == 'py_return':
         return f"{indent}return {_safe_str(block.get('value', ''))}\n"
+
+    # Nodo Validador (Autograding Python)
+    if b_type == 'py_validator':
+        challenge_id = _safe_str(block.get('challenge_id', 'reto_1'))
+        target = _safe_str(block.get('target', 'res'))
+        expected = _safe_str(block.get('expected', '10'))
+        
+        # Genera un if/else que imprime los códigos de telemetría ocultos
+        return (
+            f"{indent}# --- VALIDACIÓN DEL RETO: {challenge_id} ---\n"
+            f"{indent}if str({target}) == str('{expected}'):\n"
+            f"{indent}    print('EDUBOT_VAL_PASS|{challenge_id}')\n"
+            f"{indent}    print('✅ [Validador] ¡Reto superado correctamente!')\n"
+            f"{indent}else:\n"
+            f"{indent}    print('EDUBOT_VAL_FAIL|{challenge_id}')\n"
+            f"{indent}    print('❌ [Validador] Resultado incorrecto.')\n"
+        )
     
     if b_type == 'py_import':
         names = block.get('names', '')
