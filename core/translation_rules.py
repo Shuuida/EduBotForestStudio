@@ -138,7 +138,7 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
     if b_type == 'py_validator':
         challenge_id = _safe_str(block.get('challenge_id', 'reto_1'))
         target = _safe_str(block.get('target', 'res'))
-        expected = _safe_str(block.get('expected', '10'))
+        expected = _safe_str(block.get('expected', '10')).replace("'", "\\'")
         
         # Genera un if/else que imprime los códigos de telemetría ocultos
         return (

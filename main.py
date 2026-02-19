@@ -14,6 +14,7 @@ import platform
 import shutil
 import json
 #import yaml
+import hashlib
 from datetime import datetime
 
 #IMPORTACIONES DEL NÚCLEO DE EDUBOT
@@ -24,9 +25,9 @@ from storage import file_handler
 from core.executor import execute_user_code
 from core import ml_manager
 from estimators import memory_estimator
-import maker_edu.auth
-import maker_edu.autograder
-import maker_edu.dashboard
+# import maker_edu.auth
+# import maker_edu.autograder
+# import maker_edu.dashboard
 
 
 
@@ -408,6 +409,221 @@ def api_export_c_model(model_name):
 
     except Exception as e:
         return {"success": False, "error": f"Error interno exportando: {str(e)}"}
+
+# ------------------------------------
+# MÓDULO DE SEGURIDAD Y AUTENTICACIÓN
+# ------------------------------------
+
+DB_FOLDER = os.path.join(BASE_PATH, "db")
+USERS_FILE = os.path.join(DB_FOLDER, "users.json")
+STUDENTS_FILE = os.path.join(DB_FOLDER, "students.json")
+
+def _ensure_users_db_exists():
+    if not os.path.exists(DB_FOLDER):
+        os.makedirs(DB_FOLDER)
+    if not os.path.exists(USERS_FILE):
+        # Usuario por defecto: admin / admin
+        default_users = [{
+            "username": "admin",
+            "password_hash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+            "name": "Profesor Admin"
+        }]
+        with open(USERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(default_users, f, indent=4)
+
+@eel.expose
+def api_login_teacher(username, password):
+    """
+    Valida el acceso del profesor contra users.json
+    """
+    try:
+        _ensure_users_db_exists()
+        with open(USERS_FILE, 'r', encoding='utf-8') as f:
+            users = json.load(f)
+            
+        input_hash = hashlib.sha256(password.encode()).hexdigest()
+        
+        for user in users:
+            if user.get('username') == username and user.get('password_hash') == input_hash:
+                return {'success': True, 'role': 'teacher', 'name': user.get('name', username)}
+                
+        return {'success': False, 'error': 'Usuario o contraseña incorrectos'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_create_teacher(username, password, name):
+    """
+    Crea un nuevo perfil de profesor en users.json
+    """
+    try:
+        _ensure_users_db_exists()
+        with open(USERS_FILE, 'r', encoding='utf-8') as f:
+            users = json.load(f)
+            
+        # Validar duplicados
+        if any(u.get('username') == username for u in users):
+            return {'success': False, 'error': 'El nombre de usuario ya existe.'}
+            
+        new_hash = hashlib.sha256(password.encode()).hexdigest()
+        
+        users.append({
+            "username": username,
+            "password_hash": new_hash,
+            "name": name
+        })
+        
+        with open(USERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(users, f, indent=4)
+            
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_check_admin_access(password):
+    """Valida la contraseña maestra de administrador (Default: 'root')"""
+    try:
+        # Hash SHA256 de "root"
+        master_hash = "4813494d137e1631bba301d5acab6e7bb7aa74ce1185d456565ef51d737677b2"
+        input_hash = hashlib.sha256(password.encode()).hexdigest()
+        return {'success': input_hash == master_hash}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_get_users():
+    """Obtiene lista de profesores para el panel de admin"""
+    try:
+        _ensure_users_db_exists()
+        with open(USERS_FILE, 'r', encoding='utf-8') as f:
+            users = json.load(f)
+        # Retornamos solo datos seguros
+        return {'success': True, 'users': [{'username': u['username'], 'name': u.get('name', 'Sin Nombre')} for u in users]}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_delete_user(username):
+    """Elimina un usuario profesor"""
+    try:
+        _ensure_users_db_exists()
+        with open(USERS_FILE, 'r', encoding='utf-8') as f:
+            users = json.load(f)
+        
+        new_users = [u for u in users if u.get('username') != username]
+        
+        with open(USERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(new_users, f, indent=4)
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_login_student(name):
+    """
+    Registra el inicio de sesión de un estudiante.
+    """
+    try:
+        if not name or len(name.strip()) < 1:
+            return {'success': False, 'error': 'El nombre no puede estar vacío'}
+        
+        # Asegurar existencia de DB y archivo de estudiantes
+        if not os.path.exists(DB_FOLDER):
+            os.makedirs(DB_FOLDER)
+        if not os.path.exists(STUDENTS_FILE):
+            with open(STUDENTS_FILE, 'w', encoding='utf-8') as f:
+                json.dump([], f)
+
+        with open(STUDENTS_FILE, 'r', encoding='utf-8') as f:
+            students = json.load(f)
+
+        # Registrar o actualizar estudiante
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        found = False
+        for s in students:
+            if s.get('name') == name:
+                s['last_login'] = now
+                found = True
+                break
+        
+        if not found:
+            students.append({'name': name, 'first_login': now, 'last_login': now})
+            
+        with open(STUDENTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(students, f, indent=4)
+
+        print(f"[AUTH] Estudiante conectado: {name}")
+        return {'success': True, 'role': 'student', 'name': name}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+# -------------------------------------
+# SISTEMA DE EVALUACIÓN Y PERSISTENCIA
+# -------------------------------------
+
+GRADES_FILE = os.path.join(DB_FOLDER, "grades.json")
+
+def ensure_db_exists():
+    if not os.path.exists(DB_FOLDER):
+        os.makedirs(DB_FOLDER)
+    if not os.path.exists(GRADES_FILE):
+        with open(GRADES_FILE, 'w', encoding='utf-8') as f:
+            json.dump([], f)
+
+@eel.expose
+def api_save_grade(student_name, challenge_id, score):
+    """
+    Guarda o actualiza la nota de un estudiante en un reto específico.
+    """
+    try:
+        ensure_db_exists()
+        
+        with open(GRADES_FILE, 'r', encoding='utf-8') as f:
+            grades = json.load(f)
+            
+        # Buscar si ya existe una entrada para este estudiante y reto
+        found = False
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Asumimos que score >= 100 es aprobado (lógica simple)
+        status = "Aprobado" if float(score) >= 100 else "Reprobado" 
+        
+        for record in grades:
+            if record.get('student') == student_name and record.get('challenge') == challenge_id:
+                record['score'] = score
+                record['status'] = status
+                record['timestamp'] = timestamp
+                found = True
+                break
+        
+        if not found:
+            grades.append({
+                'student': student_name,
+                'challenge': challenge_id,
+                'score': score,
+                'status': status,
+                'timestamp': timestamp
+            })
+            
+        with open(GRADES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(grades, f, indent=4)
+            
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_get_grades():
+    """
+    Recupera todas las notas para el Dashboard del profesor.
+    """
+    try:
+        ensure_db_exists()
+        with open(GRADES_FILE, 'r', encoding='utf-8') as f:
+            grades = json.load(f)
+        return {'success': True, 'grades': grades}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
 
 # --------------------------------------------
 # PUNTO DE ENTRADA PRINCIPAL

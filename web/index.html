@@ -99,6 +99,11 @@
         // ----------------------------------------------------------------------
         // CONFIGURACIÓN DE LIBRERÍAS
         // ----------------------------------------------------------------------
+        
+        // Limpiar sesión al iniciar la aplicación (No recordar sesión anterior)
+        localStorage.removeItem('edubot_role');
+        localStorage.removeItem('edubot_student_name');
+
         const React = window.React;
         const { useState, useEffect, useCallback, useRef } = React;
         const { createRoot } = window.ReactDOM;
@@ -418,10 +423,19 @@
         };
 
         const TeacherDashboard = ({ onClose }) => {
-            // Datos simulados (Luego los conectaremos con Eel para leer grades.json)
-            const [grades, setGrades] = useState([
-                { student: "Carlos Perez", challenge: "RETO_01", status: "Aprobado (100)", date: "10:45 AM" }
-            ]);
+            const [grades, setGrades] = useState([]);
+
+            useEffect(() => {
+                const loadGrades = async () => {
+                    if (window.eel) {
+                        const res = await window.eel.api_get_grades()();
+                        if (res.success) {
+                            setGrades(res.grades);
+                        }
+                    }
+                };
+                loadGrades();
+            }, []);
 
             return (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
@@ -448,7 +462,7 @@
                                             <td className="px-4 py-3 font-medium text-gray-200">{g.student}</td>
                                             <td className="px-4 py-3 text-blue-400 font-mono">{g.challenge}</td>
                                             <td className={`px-4 py-3 font-bold ${g.status.includes('Aprobado') ? 'text-green-500' : 'text-red-500'}`}>{g.status}</td>
-                                            <td className="px-4 py-3 text-xs">{g.date}</td>
+                                            <td className="px-4 py-3 text-xs">{g.timestamp}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -689,24 +703,227 @@
             );
         };
 
-        const WelcomeScreen = ({ onNew, onOpen }) => (
-            <div className="h-full flex flex-col items-center justify-center bg-gray-900 text-white relative overflow-hidden">
-                <div className="absolute inset-0 opacity-10 pointer-events-none">
-                    <div className="absolute top-0 left-0 w-64 h-64 bg-green-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
-                    <div className="absolute bottom-0 left-20 w-64 h-64 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div>
-                </div>
-                <div className="z-10 text-center space-y-8 p-8 bg-gray-800/50 backdrop-blur-md rounded-2xl border border-gray-700 shadow-2xl max-w-lg w-full">
-                    <div className="flex justify-center mb-4"><div className="bg-green-500 p-4 rounded-full shadow-lg shadow-green-500/20"><Sprout size={48} className="text-white" /></div></div>
-                    <div><h1 className="text-4xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">EduBot Forest Studio</h1><p className="text-gray-400 mt-2">v1.0 Stable • Python • Machine Learning • TinyML</p></div>
-                    <div className="space-y-3">
-                        <button onClick={() => onNew('ml')} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FileJson className="text-blue-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Nuevo Proyecto ML</div><div className="text-xs text-gray-400">Crear modelos de IA visualmente</div></div></button>
-                        <button onClick={() => onNew('python')} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><Code className="text-yellow-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Fundamentos Python</div><div className="text-xs text-gray-400">Aprender lógica de programación</div></div></button>
-                        <button onClick={onOpen} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FolderOpen className="text-purple-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Abrir Proyecto</div><div className="text-xs text-gray-400">Cargar proyectos o Modelos</div></div></button>
+        const WelcomeScreen = ({ onNew, onOpen }) => {
+            const [viewState, setViewState] = useState(localStorage.getItem('edubot_role') ? 'menu' : 'role_select'); 
+            const [inputVal, setInputVal] = useState('');
+            const [teacherUser, setTeacherUser] = useState('');
+            const [teacherName, setTeacherName] = useState('');
+            const [adminPwd, setAdminPwd] = useState('');
+            const [usersList, setUsersList] = useState([]);
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+
+            const handleRoleSelect = (role) => {
+                setViewState(role === 'student' ? 'login_student' : 'login_teacher');
+                setInputVal('');
+                setTeacherUser('');
+                setTeacherName('');
+                setAdminPwd('');
+                setError('');
+            };
+
+            const performLogin = async () => {
+                if (!inputVal.trim()) { setError("El campo no puede estar vacío"); return; }
+                setLoading(true);
+                setError('');
+
+                try {
+                    let res;
+                    if (viewState === 'login_student') {
+                        res = await window.eel.api_login_student(inputVal)();
+                        if (res.success) {
+                            localStorage.setItem('edubot_role', 'student');
+                            localStorage.setItem('edubot_student_name', res.name);
+                            setViewState('menu');
+                        } else { setError(res.error); }
+                    } else {
+                        if (!teacherUser.trim()) { setError("El usuario es requerido"); setLoading(false); return; }
+                        res = await window.eel.api_login_teacher(teacherUser, inputVal)();
+                        if (res.success) {
+                            localStorage.setItem('edubot_role', 'teacher');
+                            setViewState('menu');
+                        } else { setError(res.error); }
+                    }
+                } catch (e) {
+                    setError("Error de conexión con el backend: " + e);
+                }
+                setLoading(false);
+            };
+
+            const performRegister = async () => {
+                if (!teacherUser.trim() || !inputVal.trim() || !teacherName.trim()) {
+                    setError("Todos los campos son requeridos");
+                    return;
+                }
+                setLoading(true);
+                try {
+                    const res = await window.eel.api_create_teacher(teacherUser, inputVal, teacherName)();
+                    if (res.success) {
+                        alert("Profesor registrado correctamente. Ahora puedes iniciar sesión.");
+                        setViewState('login_teacher');
+                        setError('');
+                        setInputVal(''); // Limpiar password
+                    } else { setError(res.error); }
+                } catch (e) { setError("Error: " + e); }
+                setLoading(false);
+            };
+
+            const performAdminLogin = async () => {
+                if (!adminPwd.trim()) return;
+                setLoading(true);
+                const res = await window.eel.api_check_admin_access(adminPwd)();
+                if (res.success) {
+                    setViewState('admin_dashboard');
+                    loadUsers();
+                    setError('');
+                } else {
+                    setError("Contraseña maestra incorrecta");
+                }
+                setLoading(false);
+            };
+
+            const loadUsers = async () => {
+                const res = await window.eel.api_get_users()();
+                if (res.success) setUsersList(res.users);
+            };
+
+            const deleteUser = async (username) => {
+                if(!confirm(`¿Estás seguro de eliminar al profesor '${username}'?`)) return;
+                const res = await window.eel.api_delete_user(username)();
+                if (res.success) {
+                    loadUsers();
+                } else {
+                    alert("Error al eliminar: " + res.error);
+                }
+            };
+
+            const renderContent = () => {
+                if (viewState === 'menu') {
+                    return (
+                        <div className="space-y-3 animate-fade-in">
+                            <div className="text-sm text-gray-400 mb-4">
+                                Conectado como: <span className="text-white font-bold">{localStorage.getItem('edubot_role') === 'teacher' ? 'Profesor' : localStorage.getItem('edubot_student_name')}</span>
+                                <button onClick={() => { localStorage.removeItem('edubot_role'); localStorage.removeItem('edubot_student_name'); setViewState('role_select'); }} className="ml-2 text-xs text-red-400 hover:underline">(Salir)</button>
+                            </div>
+                            <button onClick={() => onNew('ml')} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FileJson className="text-blue-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Nuevo Proyecto ML</div><div className="text-xs text-gray-400">Crear modelos de IA visualmente</div></div></button>
+                            <button onClick={() => onNew('python')} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><Code className="text-yellow-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Fundamentos Python</div><div className="text-xs text-gray-400">Aprender lógica de programación</div></div></button>
+                            <button onClick={onOpen} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FolderOpen className="text-purple-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Abrir Proyecto</div><div className="text-xs text-gray-400">Cargar proyectos o Modelos</div></div></button>
+                        </div>
+                    );
+                }
+
+                if (viewState === 'role_select') {
+                    return (
+                        <div className="space-y-4 animate-fade-in">
+                            <h2 className="text-xl font-semibold text-white">¿Quién eres?</h2>
+                            <div className="grid grid-cols-2 gap-4">
+                                <button onClick={() => handleRoleSelect('student')} className="flex flex-col items-center gap-2 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl border border-gray-600 hover:border-blue-500 transition-all">
+                                    <Users size={32} className="text-blue-400" />
+                                    <span className="font-bold">Estudiante</span>
+                                </button>
+                                <button onClick={() => handleRoleSelect('teacher')} className="flex flex-col items-center gap-2 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl border border-gray-600 hover:border-indigo-500 transition-all">
+                                    <Settings size={32} className="text-indigo-400" />
+                                    <span className="font-bold">Profesor</span>
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+
+                if (viewState === 'register_teacher') {
+                    return (
+                        <div className="space-y-3 animate-fade-in text-left">
+                            <div className="flex items-center gap-2 text-gray-400 cursor-pointer hover:text-white mb-2" onClick={() => setViewState('login_teacher')}><ArrowLeft size={16} /> <span>Volver</span></div>
+                            <h2 className="text-xl font-semibold text-white text-center">Nuevo Profesor</h2>
+                            <div>
+                                <label className="block text-xs text-gray-400 mb-1">Nombre Completo</label>
+                                <input type="text" className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white outline-none focus:border-blue-500" placeholder="Ej: Prof. María González" value={teacherName} onChange={(e) => setTeacherName(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-400 mb-1">Usuario</label>
+                                <input type="text" className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white outline-none focus:border-blue-500" placeholder="Ej: maria.g" value={teacherUser} onChange={(e) => setTeacherUser(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-400 mb-1">Contraseña</label>
+                                <input type="password" className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white outline-none focus:border-blue-500" placeholder="••••••" value={inputVal} onChange={(e) => setInputVal(e.target.value)} />
+                            </div>
+                            {error && <div className="text-red-400 text-xs bg-red-900/20 p-2 rounded border border-red-900/50">{error}</div>}
+                            <button onClick={performRegister} disabled={loading} className={`w-full py-2 mt-2 rounded-lg font-bold shadow-lg transition-all bg-green-600 hover:bg-green-500 text-white shadow-green-500/20 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>{loading ? 'Registrando...' : 'Crear Cuenta'}</button>
+                        </div>
+                    );
+                }
+
+                if (viewState === 'admin_auth') {
+                    return (
+                        <div className="space-y-4 animate-fade-in">
+                            <div className="flex items-center gap-2 text-gray-400 cursor-pointer hover:text-white mb-2" onClick={() => setViewState('login_teacher')}><ArrowLeft size={16} /> <span>Volver</span></div>
+                            <h2 className="text-xl font-semibold text-red-400 flex items-center justify-center gap-2"><Settings size={20}/> Administración</h2>
+                            <p className="text-xs text-gray-400">Ingresa la contraseña maestra del sistema.</p>
+                            <input type="password" className="w-full bg-gray-900 border border-red-900/50 rounded-lg p-3 text-white outline-none focus:border-red-500 transition-colors" placeholder="Master Password" value={adminPwd} onChange={(e) => setAdminPwd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && performAdminLogin()} autoFocus />
+                            {error && <div className="text-red-400 text-xs bg-red-900/20 p-2 rounded border border-red-900/50">{error}</div>}
+                            <button onClick={performAdminLogin} disabled={loading} className="w-full py-2 rounded-lg font-bold bg-red-700 hover:bg-red-600 text-white shadow-lg shadow-red-900/20 transition-all">Acceder</button>
+                        </div>
+                    );
+                }
+
+                if (viewState === 'admin_dashboard') {
+                    return (
+                        <div className="space-y-4 animate-fade-in text-left">
+                            <div className="flex items-center justify-between mb-2">
+                                <h2 className="text-lg font-semibold text-white">Gestión de Profesores</h2>
+                                <button onClick={() => setViewState('login_teacher')} className="text-xs text-gray-400 hover:text-white">Cerrar</button>
+                            </div>
+                            <div className="bg-gray-900/50 rounded-lg border border-gray-700 max-h-60 overflow-y-auto custom-scrollbar">
+                                {usersList.length === 0 ? <div className="p-4 text-center text-gray-500 text-xs">No hay usuarios registrados.</div> : 
+                                usersList.map((u, i) => (
+                                    <div key={i} className="flex justify-between items-center p-3 border-b border-gray-800 last:border-0 hover:bg-gray-800/50 transition-colors">
+                                        <div>
+                                            <div className="font-bold text-sm text-gray-200">{u.name}</div>
+                                            <div className="text-xs text-gray-500">@{u.username}</div>
+                                        </div>
+                                        <button onClick={() => deleteUser(u.username)} className="text-red-400 hover:text-red-300 hover:bg-red-900/30 p-1.5 rounded transition-colors" title="Eliminar cuenta"><Trash2 size={16}/></button>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={() => { setTeacherName(''); setTeacherUser(''); setInputVal(''); setViewState('register_teacher'); }} className="w-full py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-all flex items-center justify-center gap-2"><Users size={16}/> Agregar Nuevo Profesor</button>
+                        </div>
+                    );
+                }
+
+                const isTeacher = viewState === 'login_teacher';
+                return (
+                    <div className="space-y-4 animate-fade-in">
+                        <div className="flex items-center gap-2 text-gray-400 cursor-pointer hover:text-white mb-2" onClick={() => setViewState('role_select')}><ArrowLeft size={16} /> <span>Volver</span></div>
+                        <h2 className="text-xl font-semibold text-white">{isTeacher ? 'Acceso Profesor' : 'Acceso Estudiante'}</h2>
+                        <div>
+                            {isTeacher && (
+                                <div className="mb-3">
+                                    <label className="block text-xs text-gray-400 mb-1">Usuario</label>
+                                    <input type="text" className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-white outline-none focus:border-blue-500 transition-colors" placeholder="Ej: Pedro" value={teacherUser} onChange={(e) => setTeacherUser(e.target.value)} />
+                                </div>
+                            )}
+                            <label className="block text-xs text-gray-400 mb-1">{isTeacher ? 'Contraseña' : 'Tu Nombre'}</label>
+                            <input type={isTeacher ? "password" : "text"} className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-white outline-none focus:border-blue-500 transition-colors" placeholder={isTeacher ? "••••••" : "Ej: Juan Pérez"} value={inputVal} onChange={(e) => setInputVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && performLogin()} autoFocus />
+                        </div>
+                        {error && <div className="text-red-400 text-xs bg-red-900/20 p-2 rounded border border-red-900/50">{error}</div>}
+                        <button onClick={performLogin} disabled={loading} className={`w-full py-3 rounded-lg font-bold shadow-lg transition-all ${isTeacher ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'} ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>{loading ? 'Conectando...' : 'Ingresar'}</button>
+                        {isTeacher && <div className="text-center"><button onClick={() => { setError(''); setViewState('register_teacher'); }} className="text-xs text-indigo-400 hover:text-indigo-300 hover:underline">¿No tienes cuenta? Regístrate aquí</button></div>}
+                        {isTeacher && <div className="text-center mt-2 pt-2 border-t border-gray-700"><button onClick={() => { setError(''); setAdminPwd(''); setViewState('admin_auth'); }} className="text-[10px] text-gray-500 hover:text-gray-300 uppercase tracking-wider font-bold">Administrar Cuentas</button></div>}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="h-full flex flex-col items-center justify-center bg-gray-900 text-white relative overflow-hidden">
+                    <div className="absolute inset-0 opacity-10 pointer-events-none"><div className="absolute top-0 left-0 w-64 h-64 bg-green-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div><div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div><div className="absolute bottom-0 left-20 w-64 h-64 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div></div>
+                    <div className="z-10 text-center space-y-6 p-8 bg-gray-800/50 backdrop-blur-md rounded-2xl border border-gray-700 shadow-2xl max-w-lg w-full transition-all">
+                        <div className="flex justify-center mb-2"><div className="bg-green-500 p-4 rounded-full shadow-lg shadow-green-500/20"><Sprout size={48} className="text-white" /></div></div>
+                        <div><h1 className="text-4xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">EduBot Forest Studio</h1><p className="text-gray-400 mt-2">v1.0 Stable • Python • Machine Learning</p></div>
+                        {renderContent()}
                     </div>
                 </div>
-            </div>
-        );
+            );
+        };
 
         const TutorialOverlay = ({ onComplete }) => {
             const [step, setStep] = useState(0);
@@ -915,6 +1132,7 @@
                 connectionStyle: 'default' // default, straight, step, smoothstep
             });
             const [showSettings, setShowSettings] = useState(false);
+            const [showTeacherDashboard, setShowTeacherDashboard] = useState(false);
 
             useEffect(() => {
                 const root = document.documentElement;
@@ -1127,6 +1345,9 @@
                             <button onClick={deleteSelected} title="Borrar un nodo del lienzo" className="p-2 rounded hover:bg-red-900/30 text-red-400"><Trash2 size={18}/></button>
                             <button onClick={saveProject} title="Guardar el avance del proyecto" className="p-2 rounded hover:bg-blue-900/30 text-blue-400"><Save size={18}/></button>
                             <button onClick={trashProject} title="Mover Proyecto a Papelera" className="p-2 rounded hover:bg-red-900/40 text-red-500 transition-colors border border-transparent hover:border-red-500/50"><FileWarning size={18}/></button>
+                            <div className="h-6 w-px bg-gray-700 mx-1"></div>
+                            <StudentAuth onOpenTeacherDashboard={() => setShowTeacherDashboard(true)} />
+                            <div className="h-6 w-px bg-gray-700 mx-1"></div>
                             <button onClick={() => setShowSettings(true)} className="p-2 rounded hover:bg-gray-700 text-gray-400 hover:text-white mr-2" title="Preferencias"> <Settings size={18} /> </button>
                             <button onClick={() => setShowTutorial(true)} className="p-2 rounded hover:bg-gray-700 text-yellow-400 mr-2" title="Ver Tutorial"><span className="text-xs font-bold border border-yellow-400 rounded-full w-5 h-5 flex items-center justify-center">?</span></button>
                             <div className="h-6 w-px bg-gray-700 mx-1"></div>
@@ -1183,6 +1404,7 @@
                     </div>
                     <div className="h-40 border-t border-gray-700 flex flex-col bg-black shrink-0"><div className="bg-gray-800 text-[10px] uppercase font-bold tracking-wider px-3 py-1 text-gray-400 border-b border-gray-700 flex justify-between"><span>Terminal</span><button onClick={()=>setLogs([])} className="hover:text-white">Clear</button></div><TerminalLog logs={logs} /></div>
                     <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} prefs={prefs} setPrefs={setPrefs}/>
+                    {showTeacherDashboard && <TeacherDashboard onClose={() => setShowTeacherDashboard(false)} />}
                     <CustomModal {...modalConfig} />
                 </div>
             );
