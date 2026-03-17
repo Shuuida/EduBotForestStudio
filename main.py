@@ -25,9 +25,9 @@ from storage import file_handler
 from core.executor import execute_user_code
 from core import ml_manager
 from estimators import memory_estimator
-# import maker_edu.auth
-# import maker_edu.autograder
-# import maker_edu.dashboard
+import maker_edu.auth
+import maker_edu.autograder
+import maker_edu.dashboard
 
 
 
@@ -116,8 +116,8 @@ def api_load_project(filename):
     except Exception as e:
         return {'error': f"Error de lectura: {str(e)}"}
 
-@eel.expose
-def api_save_model_file(data, filename):
+# @eel.expose
+#* def api_save_model_file(data, filename):
     """
     Guarda la arquitectura del modelo ML (nodos/conexiones) 
     como archivo .edubotml en la carpeta 'models'.
@@ -278,8 +278,8 @@ def api_add_node_manually(node_data):
     return True
 
 # GESTIÓN DE ARCHIVOS GENÉRICOS
-@eel.expose
-def api_file_save(content, name, file_type="auto"):
+# @eel.expose
+#* def api_file_save(content, name, file_type="auto"):
     """
     Guarda archivos generados (ej. exportaciones a C, datasets).
     NOTA: El orden de argumentos se ajustó para coincidir con JS (content, name).
@@ -291,8 +291,8 @@ def api_file_save(content, name, file_type="auto"):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-@eel.expose
-def api_file_list():
+#@eel.expose
+#* def api_file_list():
     try:
         file_handler.ensure_dir_exist()
         
@@ -309,8 +309,8 @@ def api_file_list():
     except Exception as e:
         return {"error": str(e)}
 
-@eel.expose
-def api_load_dataset_data(name):
+# @eel.expose
+#* def api_load_dataset_data(name):
     """
     Conecta la UI con la capacidad de lectura híbrida (CSV/JSON).
     Permite a la interfaz previsualizar datos sin importar el formato origen.
@@ -325,8 +325,8 @@ def api_load_dataset_data(name):
         return {"success": False, "error": str(e)}
 
 # ESTIMACIÓN DE MEMORIA
-@eel.expose
-def api_estimate_memory_desktop(model_name):
+# @eel.expose
+#* def api_estimate_memory_desktop(model_name):
     try:
         entry = ml_manager._MODEL_REGISTRY.get(model_name)
         if not entry:
@@ -344,8 +344,8 @@ def api_estimate_memory_desktop(model_name):
         return {"error": str(e)}
 
 # EXPORTACIÓN A C
-@eel.expose
-def api_export_c_model(model_name):
+# @eel.expose
+#* def api_export_c_model(model_name):
     """
     Genera el código C/C++ para Arduino del modelo entrenado y lo guarda en disco.
     Incluye automáticamente cabeceras y guardas para Arduino Uno.
