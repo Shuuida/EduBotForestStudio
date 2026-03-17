@@ -47,26 +47,6 @@
         .edge-path-error { stroke: #f97316 !important; stroke-width: 3; stroke-dasharray: 5; }
         .edge-path-idle { stroke-width: 2; opacity: 0.8; }
         @keyframes dashdraw { from { stroke-dashoffset: 20; } to { stroke-dashoffset: 0; } }
-        
-        /* Simulación */
-        .sim-container { width: 100%; height: 100%; position: relative; background: #0f1115; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-        .sim-svg { width: 90%; height: 90%; overflow: visible; }
-        .sim-link { fill: none; stroke-linecap: round; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
-        .sim-link.idle { stroke: #374151; stroke-width: 1.5; opacity: 0.2; }
-        .sim-link.active { stroke: #10b981; stroke-width: 2; opacity: 0.9; filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.6)); } 
-        .sim-link.error { stroke: #f97316; stroke-width: 2; opacity: 0.8; stroke-dasharray: 6; }
-        .sim-node { transition: all 0.6s ease; }
-        .sim-node circle, .sim-node rect, .sim-node path.node-shape { stroke-width: 2; transition: all 0.5s ease; }
-        .sim-node.idle circle, .sim-node.idle rect { fill: #111827; stroke: #4b5563; }
-        .sim-node.idle path.node-shape { stroke: #4b5563; }
-        .sim-node.idle text { fill: #6b7280; }
-        .sim-node.active circle, .sim-node.active rect { fill: rgba(6, 78, 59, 0.4); stroke: #10b981; filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.5)); }
-        .sim-node.active path.node-shape { stroke: #10b981; filter: drop-shadow(0 0 5px rgba(16, 185, 129, 0.5)); }
-        .sim-node.active text { fill: #d1fae5; text-shadow: 0 0 5px rgba(16, 185, 129, 0.8); }
-        .sim-node.error circle, .sim-node.error rect { fill: rgba(69, 26, 3, 0.4); stroke: #f97316; }
-        .sim-node.error path.node-shape { stroke: #f97316; }
-        .sim-node.error text { fill: #fdba74; }
-        .data-particle { fill: #ffffff; filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)); }
 
         /* UI */
         .w-64.bg-gray-900.border-r.border-gray-700 { background: linear-gradient(to bottom, #111827, #0a0a0a); border-right: 1px solid #1f2937 !important; box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.03); }
@@ -83,7 +63,7 @@
         ::-webkit-scrollbar-thumb:hover { background-color: #4b5563; }
         ::-webkit-scrollbar-corner { background: #111827; }
         
-        .tutorial-overlay { position: absolute; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; animation: fadeIn 0.3s ease; }
+        .tutorial-overlay { position: absolute; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.6); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; animation: fadeIn 0.3s ease; }
         .tutorial-card { background: #1f2937; border: 1px solid #374151; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); border-radius: 16px; padding: 24px; max-width: 450px; width: 90%; text-align: center; position: relative; animation: slideUp 0.4s ease; }
         .tutorial-step-dots { display: flex; justify-content: center; gap: 8px; margin-top: 16px; }
         .dot { width: 8px; height: 8px; border-radius: 50%; background: #4b5563; transition: all 0.3s; }
@@ -96,9 +76,7 @@
     <div id="root" class="h-screen w-screen flex flex-col"></div>
 
     <script type="text/babel" data-type="module">
-        // ----------------------------------------------------------------------
         // CONFIGURACIÓN DE LIBRERÍAS
-        // ----------------------------------------------------------------------
         
         // Limpiar sesión al iniciar la aplicación (No recordar sesión anterior)
         localStorage.removeItem('edubot_role');
@@ -136,11 +114,7 @@
         );
 
         const Icons = {
-            Database: (p) => <IconBase {...p}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></IconBase>,
-            GitBranch: (p) => <IconBase {...p}><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></IconBase>,
             Users: (p) => <IconBase {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></IconBase>,
-            Brain: (p) => <IconBase {...p}><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></IconBase>,
-            PlayCircle: (p) => <IconBase {...p}><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></IconBase>,
             Sprout: (p) => <IconBase {...p}><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></IconBase>,
             Cpu: (p) => <IconBase {...p}><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="15" x2="23" y2="15"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="15" x2="4" y2="15"/></IconBase>,
             Play: (p) => <IconBase {...p}><polygon points="5 3 19 12 5 21 5 3"/></IconBase>,
@@ -149,9 +123,6 @@
             Save: (p) => <IconBase {...p}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></IconBase>,
             FolderOpen: (p) => <IconBase {...p}><path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-3.25 7a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></IconBase>,
             Code: (p) => <IconBase {...p}><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></IconBase>,
-            Layers: (p) => <IconBase {...p}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></IconBase>,
-            FileJson: (p) => <IconBase {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M10 13a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1"/><path d="M14 13a1 1 0 0 1 1 1v1a1 1 0 0 0 1 1 1 1 0 0 0-1 1v1a1 1 0 0 1-1 1"/></IconBase>,
-            ArrowRight: (p) => <IconBase {...p}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></IconBase>,
             Variable: (p) => <IconBase {...p}><path d="M8 21s-4-3-4-9 4-9 4-9"/><path d="M16 3s4 3 4 9-4 9-4 9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></IconBase>,
             FunctionSquare: (p) => <IconBase {...p}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 17c2 0 2.8-1 2.8-2.8V10c0-2 1-3.3 3.2-3"/><path d="M9 11.2h5.7"/></IconBase>,
             Repeat: (p) => <IconBase {...p}><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></IconBase>,
@@ -162,7 +133,6 @@
             Calculator: (p) => <IconBase {...p}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="14"/><line x1="12" y1="14" x2="12" y2="14"/><line x1="8" y1="14" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="18"/><line x1="12" y1="18" x2="12" y2="18"/><line x1="8" y1="18" x2="8" y2="18"/></IconBase>,
             CheckSquare: (p) => <IconBase {...p}><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></IconBase>,
             ArrowLeft: (p) => <IconBase {...p}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></IconBase>,
-            Activity: (p) => <IconBase {...p}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></IconBase>,
             Box: (p) => <IconBase {...p}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></IconBase>,
             Package: (p) => <IconBase {...p}><path d="m16.5 9.4-9-5.19"/><path d="m21 16-9 5.19-9-5.19V7l9-5.19 9 5.19z"/><line x1="12" y1="22" x2="12" y2="13"/><line x1="12" y1="13" x2="3.27" y2="8"/><line x1="12" y1="13" x2="20.73" y2="8"/></IconBase>,
             AlertTriangle: (p) => <IconBase {...p}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></IconBase>,
@@ -174,22 +144,18 @@
         };
 
         const { 
-            Database, GitBranch, Users, Brain, PlayCircle, Sprout, Cpu, Play, 
-            Terminal, Trash2, Save, FolderOpen, Code, Layers, FileJson, 
-            ArrowRight, Variable, FunctionSquare, Repeat, Split, XCircle, 
-            Keyboard, RefreshCw, Calculator, CheckSquare, ArrowLeft, 
-            Activity, Box, Package, AlertTriangle, FileWarning,
-            Settings, Monitor, Share2, X
+            Users, Sprout, Cpu, Play, Terminal, Trash2, Save, FolderOpen, Code, 
+            Variable, FunctionSquare, Repeat, Split, XCircle, Keyboard, RefreshCw, 
+            Calculator, CheckSquare, ArrowLeft, Box, Package, AlertTriangle, 
+            FileWarning, Settings, Monitor, Share2, X
         } = Icons;
 
-        // ----------------------------------------------------------------------
         // LÓGICA DEL MOTOR (SERIALIZACIÓN & SCOPE)
-        // ----------------------------------------------------------------------
 
-        const serializeNodesLinear = (nodes, edges, mode) => {
+        const serializeNodesLinear = (nodes, edges) => {
             const nodeMap = new Map(nodes.map(n => [n.id, { ...n }]));
             
-            // --- ORDENAMIENTO TOPOLÓGICO ---
+            // ORDENAMIENTO TOPOLÓGICO
             const adjacency = new Map(); 
             const inDegree = new Map();
             
@@ -228,7 +194,7 @@
                 nodes.forEach(n => { if (!sortedIds.includes(n.id)) sortedIds.push(n.id); });
             }
 
-            // --- DETECCIÓN DE SCOPE ---
+            // DETECCIÓN DE SCOPE
             const CONTAINER_TYPES = ['py_class', 'py_func', 'py_if', 'py_loop', 'py_while', 'py_try'];
             const parentMap = new Map(); 
             sortedIds.forEach(id => parentMap.set(id, null));
@@ -262,32 +228,13 @@
                     }).filter(Boolean);
                 };
                 
-                if (mode === 'python') {
-                    const inputs = getConnectedInputs(id);
-                    if (node.type === 'py_math' || node.type === 'py_compare') {
-                        if (!block.left && inputs.length > 0) block.left = inputs[0];
-                        if (!block.right && inputs.length > 1) block.right = inputs[1];
-                    }
-                    if (node.type === 'py_print' && inputs.length > 0 && !block.content) {
-                        block.content = inputs[0];
-                    }
+                const inputs = getConnectedInputs(id);
+                if (node.type === 'py_math' || node.type === 'py_compare') {
+                    if (!block.left && inputs.length > 0) block.left = inputs[0];
+                    if (!block.right && inputs.length > 1) block.right = inputs[1];
                 }
-                
-                if (mode === 'ml') {
-                    if (node.type.includes('train')) {
-                        const dsEdge = edges.find(e => e.target === node.id);
-                        if (dsEdge) {
-                            const dsNode = nodeMap.get(dsEdge.source);
-                            if (dsNode) block.dataset = dsNode.data.name || 'data';
-                        }
-                    }
-                    if (node.type === 'ml_predict') {
-                        const modelEdge = edges.find(e => e.target === node.id);
-                        if (modelEdge) {
-                            const modelNode = nodeMap.get(modelEdge.source);
-                            if (modelNode) block.model = modelNode.data.model_name || 'model';
-                        }
-                    }
+                if (node.type === 'py_print' && inputs.length > 0 && !block.content) {
+                    block.content = inputs[0];
                 }
 
                 if (CONTAINER_TYPES.includes(node.type)) {
@@ -317,53 +264,7 @@
             return blocksByScope.get(null);
         };
 
-        // ----------------------------------------------------------------------
         // COMPONENTES UI Y NODOS
-        // ----------------------------------------------------------------------
-
-        const DatasetNode = ({ data, id }) => {
-            const [files, setFiles] = useState([]);
-            useEffect(() => {
-                if (data.source === 'csv') {
-                    const fetchFiles = async () => {
-                        if (window.eel) {
-                            try {
-                                const res = await window.eel.api_file_list()();
-                                if (res && res.datasets) setFiles(res.datasets);
-                            } catch (e) { console.error(e); }
-                        }
-                    };
-                    fetchFiles();
-                }
-            }, [data.source]);
-
-            return (
-                <BaseNode title="Dataset" icon={Database} color="bg-blue-600">
-                    <div>
-                        <label className="node-label">Nombre interno</label>
-                        <input name="name" className="node-input nodrag" value={data.name !== undefined ? data.name : 'data'} onChange={e => data.onChange(id, {...data, [e.target.name]: e.target.value})} />
-                    </div>
-                    <div className="mt-1">
-                        <label className="node-label">Fuente</label>
-                        <select name="source" className="node-input nodrag" value={data.source||'inline'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}>
-                            <option value="inline">Manual (Inline)</option>
-                            <option value="csv">Archivo CSV/JSON</option>
-                        </select>
-                    </div>
-                    {data.source === 'csv' && (
-                        <div className="mt-1 animate-fade-in">
-                            <label className="node-label text-blue-300">Seleccionar Archivo</label>
-                            <select name="path" className="node-input nodrag border-blue-500" value={data.path || ''} onChange={e => data.onChange(id, { ...data, path: e.target.value })}>
-                                <option value="">-- Elige un archivo --</option>
-                                {files.map(f => <option key={f} value={f}>{f}</option>)}
-                            </select>
-                        </div>
-                    )}
-                </BaseNode>
-            );
-        };
-
-        // MÓDULO DE SEGURIDAD: ESTUDIANTE / PROFESOR
 
         const StudentAuth = ({ onOpenTeacherDashboard }) => {
             const [role, setRole] = useState(localStorage.getItem('edubot_role') || 'student');
@@ -382,7 +283,7 @@
             const handleLogout = () => {
                 localStorage.removeItem('edubot_role');
                 setRole('student');
-                window.location.reload(); // Recarga la app monolítica
+                window.location.reload(); 
             };
 
             if (role === 'teacher') {
@@ -473,90 +374,6 @@
             );
         };
 
-        const SimulationView = ({ active, status, modelType }) => {
-            const stateClass = status === 'error' ? 'error' : active ? 'active' : 'idle';
-            const DataParticle = ({ pathId, delay = 0, duration = 1.5, repeat = "indefinite" }) => (
-                active && status !== 'error' ? (
-                    <circle r="2.5" className="data-particle">
-                        <animateMotion dur={`${duration}s`} repeatCount={repeat} begin={`${delay}s`} keyPoints="0;1" keyTimes="0;1" calcMode="linear"><mpath href={`#${pathId}`} /></animateMotion>
-                    </circle>
-                ) : null
-            );
-
-            const NeuralNetViz = () => {
-                const layer1 = [0, 1, 2]; const layer2 = [0, 1, 2, 3];
-                return (
-                    <svg className="sim-svg" viewBox="0 0 500 250">
-                        {layer1.map((l1, i) => layer2.map((l2, j) => {
-                            const pid = `n-link-1-${i}-${j}`;
-                            return (<g key={pid}><path id={pid} d={`M 100 ${60 + i*60} C 200 ${60 + i*60}, 200 ${40 + j*50}, 300 ${40 + j*50}`} className={`sim-link ${stateClass}`} strokeOpacity="0.4" />{(i+j)%2===0 && <DataParticle pathId={pid} delay={Math.random()} duration={2} />}</g>)
-                        }))}
-                        {layer2.map((l2, j) => {
-                            const pid = `n-link-2-${j}`;
-                            return (<g key={pid}><path id={pid} d={`M 300 ${40 + j*50} C 380 ${40 + j*50}, 380 125, 450 125`} className={`sim-link ${stateClass}`} /><DataParticle pathId={pid} delay={1 + j*0.2} duration={1.5} /></g>)
-                        })}
-                        {layer1.map((_, i) => (<g key={`in-${i}`} className={`sim-node ${stateClass}`}><circle cx="100" cy={60 + i*60} r="14" /><text x="85" y={65 + i*60} fontSize="10" textAnchor="end">in_{i}</text></g>))}
-                        {layer2.map((_, i) => (<g key={`hid-${i}`} className={`sim-node ${stateClass}`}><circle cx="300" cy={40 + i*50} r="12" /></g>))}
-                        <g className={`sim-node ${stateClass}`}><circle cx="450" cy="125" r="18" /><text x="450" y="160" fontSize="12" textAnchor="middle" fontWeight="bold">OUT</text></g>
-                    </svg>
-                );
-            };
-
-            const ForestViz = () => {
-                const trees = [0, 1, 2]; const treeX = 60; const voteBoxX = 380; const voteInputX = voteBoxX - 20;
-                return (
-                    <svg className="sim-svg" viewBox="0 0 500 250">
-                        <defs><filter id="glow-effect" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2" result="blur" /><feComposite in="SourceGraphic" in2="blur" operator="over" /></filter></defs>
-                        {trees.map((t, i) => {
-                            const yBase = 50 + i * 75; const pathId = `tree-flow-${i}`; const rootX = treeX; const level1X = treeX + 35; const level2X = treeX + 70; const decisionPath = (i % 2 === 0); const branchY = decisionPath ? yBase - 25 : yBase + 25; 
-                            return (
-                                <g key={i} className={`sim-node ${stateClass}`}>
-                                    <polyline points={`${rootX},${yBase} ${level1X},${yBase} ${level1X},${yBase-15} ${level2X},${yBase-25}`} className={`sim-link ${stateClass}`} fill="none" opacity="0.3" />
-                                    <polyline points={`${rootX},${yBase} ${level1X},${yBase} ${level1X},${yBase+15} ${level2X},${yBase+25}`} className={`sim-link ${stateClass}`} fill="none" opacity="0.3" />
-                                    <circle cx={rootX} cy={yBase} r="14" className={active ? "fill-gray-800 stroke-green-500" : "fill-gray-900 stroke-gray-600"} strokeWidth="2" />
-                                    <g transform={`translate(${rootX - 8}, ${yBase - 8})`}><Sprout size={16} className={active ? "text-green-400" : "text-gray-500"} /></g>
-                                    <path d={`M ${level2X} ${branchY} C ${level2X + 50} ${branchY}, ${voteInputX - 50} 125, ${voteInputX} 125`} className={`sim-link ${stateClass}`} strokeDasharray={stateClass === 'idle' ? "4" : "0"} opacity={0.4} />
-                                    <path id={pathId} d={`M ${rootX} ${yBase} L ${level1X} ${yBase} L ${level2X} ${branchY} C ${level2X + 50} ${branchY}, ${voteInputX - 50} 125, ${voteInputX} 125`} fill="none" stroke="none" />
-                                    <DataParticle pathId={pathId} delay={i * 0.3} duration={2.2} />
-                                </g>
-                            )
-                        })}
-                        <g className={`sim-node ${stateClass}`}>
-                            <path d={`M ${voteInputX} 125 L ${voteBoxX} 125`} stroke={active ? "#10b981" : "#4b5563"} strokeWidth="3" />
-                            <rect x={voteBoxX} y="90" width="80" height="70" rx="6" className={active ? "fill-gray-900 stroke-green-500" : "fill-gray-900 stroke-gray-600"} strokeWidth="2" filter={active ? "url(#glow-effect)" : ""} />
-                            <text x={voteBoxX + 40} y="130" fontSize="10" fill={active ? "#d1fae5" : "#6b7280"} textAnchor="middle" fontWeight="bold">RESULT</text>
-                        </g>
-                    </svg>
-                );
-            };
-
-            const GenericViz = () => (
-                <svg className="sim-svg" viewBox="0 0 500 250">
-                    <path id="gen-path" d="M 80 125 L 180 125 L 320 125 L 420 125" className={`sim-link ${stateClass}`} />
-                    <DataParticle pathId="gen-path" duration={2} />
-                    <g className={`sim-node ${stateClass}`}><rect x="40" y="100" width="50" height="50" rx="6" /><text x="65" y="130" fontSize="12" textAnchor="middle" fontWeight="bold">IN</text></g>
-                    <g className={`sim-node ${stateClass}`}><rect x="180" y="85" width="140" height="80" rx="10" strokeWidth="3" /><text x="250" y="130" fontSize="14" textAnchor="middle" fontWeight="bold" letterSpacing="1px">MODEL</text></g>
-                    <g className={`sim-node ${stateClass}`}><circle cx="435" cy="125" r="20" /><text x="435" y="130" fontSize="12" textAnchor="middle" fontWeight="bold">Y</text></g>
-                </svg>
-            );
-
-            let Content = GenericViz;
-            const t = (modelType || '').toLowerCase();
-            if (t.includes('neural') || t.includes('nn')) Content = NeuralNetViz;
-            else if (t.includes('rf') || t.includes('random') || t.includes('forest') || t.includes('tree')) Content = ForestViz;
-
-            return (
-                <div className={`sim-container ${active ? 'sim-active' : ''}`}>
-                    <div className="absolute top-4 left-6 font-mono text-xs text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${active ? 'bg-green-500 animate-pulse' : status==='error'?'bg-red-500':'bg-gray-600'}`}></div>
-                        SIMULATION: <span className={stateClass === 'active' ? "text-green-400" : "text-gray-400"}>{modelType ? modelType.replace('ml_train_', '').toUpperCase() : 'GENERIC'}</span>
-                    </div>
-                    {status === 'error' && <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-20 backdrop-blur-sm"><div className="bg-red-950/90 text-red-200 px-6 py-4 rounded-xl border border-red-500/50 flex flex-col items-center gap-2"><AlertTriangle size={32} /><span className="font-bold">ERROR DE EJECUCIÓN</span></div></div>}
-                    <Content />
-                </div>
-            );
-        };
-
         const TerminalLog = ({ logs }) => {
             const endRef = useRef(null);
             useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [logs]);
@@ -588,7 +405,6 @@
         );
 
         const NODE_COLORS = {
-            ml_dataset: '#2563eb', ml_train_dt: '#059669', ml_train_rf: '#047857', ml_train_knn: '#9333ea', ml_train_svm: '#db2777', ml_train_linear: '#0891b2', ml_train_nn: '#4f46e5', ml_predict: '#dc2626',
             py_var: '#ca8a04', py_print: '#4b5563', py_if: '#ea580c', py_loop: '#c2410c', py_math: '#0d9488', py_func: '#7c3aed',
             default: '#6b7280'
         };
@@ -618,14 +434,6 @@
         const edgeTypes = { smart: SmartEdge };
 
         const nodeTypes = {
-            ml_dataset: DatasetNode,
-            ml_train_dt: ({ data, id }) => <BaseNode title="Decision Tree" icon={GitBranch} color="bg-emerald-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Depth</label><input name="max_depth" type="number" className="node-input nodrag" value={data.max_depth||5} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">MinLeaf</label><input name="min_size" type="number" className="node-input nodrag" value={data.min_size||1} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
-            ml_train_rf: ({ data, id }) => <BaseNode title="Random Forest" icon={Layers} color="bg-emerald-700"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Trees</label><input name="n_trees" type="number" className="node-input nodrag" value={data.n_trees||10} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">Depth</label><input name="max_depth" type="number" className="node-input nodrag" value={data.max_depth||5} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div></BaseNode>,
-            ml_train_nn: ({ data, id }) => <BaseNode title="Neural Net" icon={Brain} color="bg-indigo-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="grid grid-cols-2 gap-1 mt-1"><div><label className="node-label">Hidden</label><input name="hidden_size" type="number" className="node-input nodrag" value={data.hidden_size||4} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">Epochs</label><input name="epochs" type="number" className="node-input nodrag" value={data.epochs||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">LR</label><input name="lr" type="number" step="0.01" className="node-input nodrag" value={data.lr||0.1} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">Inputs</label><input name="n_inputs" type="number" className="node-input nodrag" value={data.n_inputs||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div><div className="mt-1 border-t border-indigo-500/30 pt-1"><label className="node-label text-indigo-200">Preprocesamiento</label><select name="scaling" className="node-input nodrag text-xs" value={data.scaling||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="">Sin Escalado (Raw)</option><option value="standard">Standard (Z-Score)</option></select></div></BaseNode>,
-            ml_train_svm: ({ data, id }) => <BaseNode title="SVM" icon={Split} color="bg-pink-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Iter</label><input name="n_iters" type="number" className="node-input nodrag" value={data.n_iters||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">LR</label><input name="learning_rate" type="number" step="0.001" className="node-input nodrag" value={data.learning_rate||0.001} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div><div className="mt-1"><select name="scaling" className="node-input nodrag text-xs" value={data.scaling||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="">No Scale</option><option value="standard">StandardScaler</option></select></div></BaseNode>,
-            ml_train_linear: ({ data, id }) => <BaseNode title="Linear Reg" icon={ArrowRight} color="bg-cyan-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="flex gap-2 mt-1"><div><label className="node-label">Epochs</label><input name="epochs" type="number" className="node-input nodrag" value={data.epochs||1000} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div><label className="node-label">LR</label><input name="learning_rate" type="number" step="0.01" className="node-input nodrag" value={data.learning_rate||0.01} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></div><div className="mt-1"><select name="scaling" className="node-input nodrag text-xs" value={data.scaling||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="">No Scale</option><option value="standard">StandardScaler</option></select></div></BaseNode>,
-            ml_train_knn: ({ data, id }) => <BaseNode title="KNN" icon={Users} color="bg-purple-600"><input name="model_name" placeholder="model" className="node-input nodrag" value={data.model_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="mt-1"><label className="node-label">K</label><input name="k" type="number" className="node-input nodrag" value={data.k||3} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><select name="task" className="node-input nodrag mt-1" value={data.task||'classification'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="classification">Clasificación</option><option value="regression">Regresión</option></select><div className="mt-1"><select name="scaling" className="node-input nodrag text-xs" value={data.scaling||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="">No Scale</option><option value="standard">StandardScaler</option></select></div></BaseNode>,
-            ml_predict: ({ data, id }) => { const currentMode = data.action_type || 'predict'; return (<BaseNode title="Ejecutar" icon={PlayCircle} color="bg-red-600"><div className="mb-2"><label className="node-label text-red-200 mb-1 block">Modo de Ejecución:</label><select name="action_type" className="node-input nodrag font-semibold" value={currentMode} onChange={e => data.onChange(id, { ...data, [e.target.name]: e.target.value })}><option value="predict">Predict (Predecir)</option><option value="eval">Evaluate (Evaluar Precisión)</option></select></div>{currentMode === 'predict' && (<div className="animate-fade-in"><label className="node-label">Datos de Entrada (X)</label><input name="X" placeholder="Ej: [0.5, 0.2]" className="node-input nodrag" value={data.X || ''} onChange={e => data.onChange(id, { ...data, [e.target.name]: e.target.value })} /><p className="text-[9px] text-gray-400 mt-1">Ingresa valores separados por coma</p></div>)}</BaseNode>); },
             py_var: ({ data, id }) => <BaseNode title="Variable" icon={Variable} color="bg-yellow-600"><div className="flex gap-2 items-center"><input name="var_name" placeholder="x" className="node-input nodrag w-1/3" value={data.var_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-bold">=</span><input name="value" placeholder="10" className="node-input nodrag" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
             py_print: ({ data, id }) => <BaseNode title="Print" icon={Terminal} color="bg-gray-600"><input name="content" placeholder="msg" className="node-input nodrag" value={data.content||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
             py_if: ({ data, id }) => <BaseNode title="If" icon={Split} color="bg-orange-600"><input name="condition" placeholder="x > 5" className="node-input nodrag" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300 mt-1">Conectar a derecha</div></BaseNode>,
@@ -642,14 +450,10 @@
             py_try: ({ data, id }) => <BaseNode title="Try/Except" icon={AlertTriangle} color="bg-amber-600"><div className="text-xs text-gray-300">Errors handled below</div></BaseNode>
         };
 
-
-        // ----------------------------------------------------------------------
-        // COMPONENTE MODAL PERSONALIZADO (Reemplazo de prompt/alert)
-        // ----------------------------------------------------------------------
+        // COMPONENTE MODAL PERSONALIZADO
         const CustomModal = ({ isOpen, type, title, message, onConfirm, onCancel }) => {
             const [inputVal, setInputVal] = useState("");
 
-            // Resetear input cuando se abre
             useEffect(() => { if (isOpen) setInputVal(""); }, [isOpen]);
 
             if (!isOpen) return null;
@@ -657,7 +461,6 @@
             return (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
                     <div className="bg-gray-800 border border-gray-600 rounded-xl shadow-2xl w-96 p-6 transform transition-all scale-100">
-                        {/* Cabecera */}
                         <div className="flex items-center gap-3 mb-4">
                             <div className="bg-blue-600 p-2 rounded-lg">
                                 {type === 'prompt' || type === 'confirm' ? <Save size={20} className="text-white"/> : <AlertTriangle size={20} className="text-white"/>}
@@ -665,10 +468,8 @@
                             <h3 className="text-lg font-bold text-white">{title || "EduBot Forest Studio"}</h3>
                         </div>
 
-                        {/* Mensaje */}
                         <p className="text-gray-300 text-sm mb-4">{message}</p>
 
-                        {/* Input (Solo si es tipo prompt) */}
                         {type === 'prompt' && (
                             <input 
                                 autoFocus
@@ -681,7 +482,6 @@
                             />
                         )}
 
-                        {/* Botones */}
                         <div className="flex justify-end gap-3">
                             {type !== 'alert' && (
                                 <button 
@@ -762,7 +562,7 @@
                         alert("Profesor registrado correctamente. Ahora puedes iniciar sesión.");
                         setViewState('login_teacher');
                         setError('');
-                        setInputVal(''); // Limpiar password
+                        setInputVal('');
                     } else { setError(res.error); }
                 } catch (e) { setError("Error: " + e); }
                 setLoading(false);
@@ -805,9 +605,8 @@
                                 Conectado como: <span className="text-white font-bold">{localStorage.getItem('edubot_role') === 'teacher' ? 'Profesor' : localStorage.getItem('edubot_student_name')}</span>
                                 <button onClick={() => { localStorage.removeItem('edubot_role'); localStorage.removeItem('edubot_student_name'); setViewState('role_select'); }} className="ml-2 text-xs text-red-400 hover:underline">(Salir)</button>
                             </div>
-                            <button onClick={() => onNew('ml')} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FileJson className="text-blue-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Nuevo Proyecto ML</div><div className="text-xs text-gray-400">Crear modelos de IA visualmente</div></div></button>
-                            <button onClick={() => onNew('python')} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><Code className="text-yellow-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Fundamentos Python</div><div className="text-xs text-gray-400">Aprender lógica de programación</div></div></button>
-                            <button onClick={onOpen} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FolderOpen className="text-purple-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Abrir Proyecto</div><div className="text-xs text-gray-400">Cargar proyectos o Modelos</div></div></button>
+                            <button onClick={onNew} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><Code className="text-yellow-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Nuevo Proyecto Python</div><div className="text-xs text-gray-400">Aprender lógica de programación</div></div></button>
+                            <button onClick={onOpen} className="w-full flex items-center justify-center gap-3 p-4 bg-gray-700 hover:bg-gray-600 rounded-xl transition-all border border-gray-600 hover:border-gray-500 group"><FolderOpen className="text-purple-400 group-hover:scale-110 transition-transform" /><div className="text-left"><div className="font-semibold">Abrir Proyecto</div><div className="text-xs text-gray-400">Cargar tu entorno de bloques</div></div></button>
                         </div>
                     );
                 }
@@ -918,7 +717,7 @@
                     <div className="absolute inset-0 opacity-10 pointer-events-none"><div className="absolute top-0 left-0 w-64 h-64 bg-green-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div><div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div><div className="absolute bottom-0 left-20 w-64 h-64 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div></div>
                     <div className="z-10 text-center space-y-6 p-8 bg-gray-800/50 backdrop-blur-md rounded-2xl border border-gray-700 shadow-2xl max-w-lg w-full transition-all">
                         <div className="flex justify-center mb-2"><div className="bg-green-500 p-4 rounded-full shadow-lg shadow-green-500/20"><Sprout size={48} className="text-white" /></div></div>
-                        <div><h1 className="text-4xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">EduBot Forest Studio</h1><p className="text-gray-400 mt-2">v1.0 Stable • Python • Machine Learning</p></div>
+                        <div><h1 className="text-4xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">EduBot Forest Studio</h1><p className="text-gray-400 mt-2">v1.0 Stable • Python Fundamentals</p></div>
                         {renderContent()}
                     </div>
                 </div>
@@ -928,10 +727,10 @@
         const TutorialOverlay = ({ onComplete }) => {
             const [step, setStep] = useState(0);
             const steps = [
-                { title: "¡Bienvenido a EduBot!", desc: "Tu estudio de Inteligencia Artificial embebida y Python. Vamos a ver cómo funciona en 4 pasos sencillos.", icon: <Sprout size={48} className="text-green-400 mx-auto mb-4" /> },
-                { title: "1. Arrastra y Suelta", desc: "En el panel izquierdo tienes tus herramientas. Haz clic y arrastra los nodos (Dataset, Modelos, Variables) hacia el centro negro (el Bosque).", icon: <Box size={48} className="text-blue-400 mx-auto mb-4" /> },
-                { title: "2. Conecta la Lógica", desc: "Une los puntos. Haz clic en el punto derecho de un nodo y arrastra la línea hacia el punto izquierdo de otro para conectar el flujo de datos.", icon: <GitBranch size={48} className="text-purple-400 mx-auto mb-4" /> },
-                { title: "3. Ejecuta y Simula", desc: "Cuando estés listo, presiona el botón verde 'Ejecutar'. Verás la simulación visual en el modo ML y los resultados en la terminal inferior. Recuerda, esto es igual para Python, sencillo y rápido.", icon: <PlayCircle size={48} className="text-red-400 mx-auto mb-4" /> }
+                { title: "¡Bienvenido a EduBot!", desc: "Tu estudio visual para aprender Python. Vamos a ver cómo funciona en sencillos pasos.", icon: <Sprout size={48} className="text-green-400 mx-auto mb-4" /> },
+                { title: "1. Arrastra y Suelta", desc: "En el panel izquierdo tienes tus herramientas de código. Haz clic y arrastra los bloques hacia el lienzo oscuro (el Bosque).", icon: <Box size={48} className="text-blue-400 mx-auto mb-4" /> },
+                { title: "2. Conecta la Lógica", desc: "Une los puntos. Haz clic en el punto derecho de un nodo y arrastra la línea hacia el punto izquierdo de otro para conectar el flujo de tu programa.", icon: <Share2 size={48} className="text-purple-400 mx-auto mb-4" /> },
+                { title: "3. Ejecuta y Aprende", desc: "Cuando estés listo, presiona el botón verde 'Ejecutar'. Verás el código de Python real generándose y la salida en la terminal inferior.", icon: <Play size={48} className="text-red-400 mx-auto mb-4" /> }
             ];
             const handleNext = () => { if (step < steps.length - 1) setStep(step + 1); else onComplete(); };
             return (
@@ -961,7 +760,6 @@
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
                     <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-[600px] overflow-hidden flex flex-col max-h-[85vh]">
                         
-                        {/* Cabecera */}
                         <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800">
                             <h2 className="text-white font-bold flex items-center gap-2">
                                 <Settings size={20} /> Preferencias de EduBot
@@ -971,10 +769,8 @@
                             </button>
                         </div>
 
-                        {/* Cuerpo con Scroll */}
                         <div className="p-6 overflow-y-auto space-y-8 text-sm text-gray-300">
                             
-                            {/* SECCIÓN 1: INTERFAZ GLOBAL */}
                             <div>
                                 <h3 className="text-green-400 font-bold uppercase text-xs mb-3 flex items-center gap-2">
                                     <Monitor size={14}/> Interfaz y Accesibilidad
@@ -1007,7 +803,6 @@
 
                             <hr className="border-gray-700" />
 
-                            {/* SECCIÓN 2: EDITOR DE CÓDIGO */}
                             <div>
                                 <h3 className="text-blue-400 font-bold uppercase text-xs mb-3 flex items-center gap-2">
                                     <Code size={14}/> Editor de Código
@@ -1038,7 +833,6 @@
 
                             <hr className="border-gray-700" />
 
-                            {/* SECCIÓN 3: EDITOR DE NODOS (FOREST) */}
                             <div>
                                 <h3 className="text-purple-400 font-bold uppercase text-xs mb-3 flex items-center gap-2">
                                     <Share2 size={14}/> Editor de Nodos
@@ -1069,7 +863,6 @@
 
                             <hr className="border-gray-700" />
 
-                            {/* SECCIÓN 4: SISTEMA */}
                             <div>
                                 <h3 className="text-red-400 font-bold uppercase text-xs mb-3 flex items-center gap-2">
                                     <Cpu size={14}/> Sistema
@@ -1092,7 +885,6 @@
 
                         </div>
 
-                        {/* Footer */}
                         <div className="p-4 bg-gray-800 border-t border-gray-700 flex justify-end">
                             <button onClick={onClose} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-lg">
                                 Aplicar y Cerrar
@@ -1103,33 +895,21 @@
             );
         };
 
-        const EditorContent = ({ mode, onBack, initialNodes, initialEdges, currentName, setCurrentName }) => {
+        const EditorContent = ({ onBack, initialNodes, initialEdges, currentName, setCurrentName }) => {
             const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes || []);
             const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges || []);
             const [showTutorial, setShowTutorial] = useState(false);
             const [reactFlowInstance, setReactFlowInstance] = useState(null);
-            const [logs, setLogs] = useState([{ time: new Date().toLocaleTimeString(), msg: `Modo: ${mode === 'ml' ? 'Machine Learning' : 'Python Fundamentals'}`, type: 'info' }]);
+            const [logs, setLogs] = useState([{ time: new Date().toLocaleTimeString(), msg: `IDE Python Listo`, type: 'info' }]);
             const [activeTab, setActiveTab] = useState('forest'); 
             const [pythonCode, setPythonCode] = useState("# El código generado aparecerá aquí...");
             const codeRef = useRef(null);
-            const [memoryStats, setMemoryStats] = useState(null);
-            const [simulationStatus, setSimulationStatus] = useState({ active: false, status: 'idle' });
+            
             const reactFlowWrapper = useRef(null);
-            const trainNode = nodes.find(n => n.type.startsWith('ml_train'));
-            const activeModelType = trainNode ? trainNode.type : null;
             const [prefs, setPrefs] = useState({
-                // UI
-                uiScale: '100',
-                dyslexicFont: false,
-                reduceMotion: false,
-                // EDITOR
-                editorFontSize: '14',
-                wordWrap: false,
-                lineNumbers: true,
-                // NODOS
-                snapToGrid: true,
-                showMinimap: false,
-                connectionStyle: 'default' // default, straight, step, smoothstep
+                uiScale: '100', dyslexicFont: false, reduceMotion: false,
+                editorFontSize: '14', wordWrap: false, lineNumbers: true,
+                snapToGrid: true, showMinimap: false, connectionStyle: 'default' 
             });
             const [showSettings, setShowSettings] = useState(false);
             const [showTeacherDashboard, setShowTeacherDashboard] = useState(false);
@@ -1139,7 +919,6 @@
                 root.style.setProperty('--editor-font-size', `${prefs.editorFontSize}px`);
                 document.body.style.zoom = `${prefs.uiScale}%`;
                 
-                // Dislexia
                 if (prefs.dyslexicFont) {
                     document.body.style.fontFamily = 'Verdana, sans-serif'; 
                     document.body.style.letterSpacing = '0.5px';
@@ -1148,7 +927,6 @@
                     document.body.style.letterSpacing = '';
                 }
 
-                // Reducir Movimiento
                 if (prefs.reduceMotion) {
                     root.style.setProperty('--animate-connection', 'none');
                     const styles = document.getElementById('motion-reduce-style') || document.createElement('style');
@@ -1156,7 +934,6 @@
                     styles.innerHTML = prefs.reduceMotion ? `* { animation: none !important; transition: none !important; }` : '';
                     document.head.appendChild(styles);
                 } else {
-                    // Limpieza si se desactiva
                     const styles = document.getElementById('motion-reduce-style');
                     if(styles) styles.innerHTML = '';
                 }
@@ -1181,7 +958,7 @@
                 const label = event.dataTransfer.getData('application/reactflow/label');
                 if (!type || !reactFlowInstance) return;
                 const position = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
-                const newNode = { id: `${type}_${Date.now()}`, type, position, data: { label, onChange: onNodeDataChange, model_name: `m_${Math.floor(Math.random()*100)}` } };
+                const newNode = { id: `${type}_${Date.now()}`, type, position, data: { label, onChange: onNodeDataChange } };
                 setNodes((nds) => nds.concat(newNode));
                 addLog(`Nodo: ${label}`);
             }, [reactFlowInstance]);
@@ -1201,7 +978,7 @@
             };
 
             const translateToCode = async () => {
-                const blocks = serializeNodesLinear(nodes, edges, mode);
+                const blocks = serializeNodesLinear(nodes, edges);
                 try {
                     if(window.eel) {
                         const res = await window.eel.api_translate("to_python", blocks)();
@@ -1214,21 +991,15 @@
             const runPipeline = async () => {
                 addLog("Ejecutando...", 'warn');
                 setEdges(eds => eds.map(e => ({ ...e, data: { status: 'active' } })));
-                const blocks = serializeNodesLinear(nodes, edges, mode);
+                const blocks = serializeNodesLinear(nodes, edges);
                 try {
                     if (window.eel) {
                         const res = await window.eel.api_execute(blocks)();
                         if (res.success) {
                             addLog("Finalizado.", 'success');
-                            if (mode === 'ml') setSimulationStatus({ active: true, status: 'success' });
-                            if(res.results) res.results.forEach(r => {
-                                if(r.result?.status === 'predicted') addLog(`Salida: ${JSON.stringify(r.result.preds)}`, 'success');
-                                if(r.result?.status === 'evaluated') addLog(`Métricas: ${JSON.stringify(r.result.result)}`, 'info');
-                            });
                             if(res.output) addLog(res.output, 'output');
-                            setTimeout(() => { setEdges(eds => eds.map(e => ({ ...e, data: { status: 'active' } }))); }, 500);
+                            setTimeout(() => { setEdges(eds => eds.map(e => ({ ...e, data: { status: 'idle' } }))); }, 500);
                         } else {
-                            if (mode === 'ml') setSimulationStatus({ active: false, status: 'error' });
                             addLog(`Error: ${res.error}`, 'error');
                             setEdges(eds => eds.map(e => ({ ...e, data: { status: 'error' } })));
                         }
@@ -1239,7 +1010,6 @@
                 }
             };
 
-            // ESTADO PARA EL MODAL
             const [modalConfig, setModalConfig] = useState({ 
                 isOpen: false, type: 'prompt', title: '', message: '', 
                 onConfirm: () => {}, onCancel: () => {} 
@@ -1247,67 +1017,34 @@
 
             const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
 
-            const exportToC = async () => {
-                const mn = nodes.find(n => n.type.includes('ml_train'));
-                if(!mn) { addLog("Error: No hay ningún modelo de entrenamiento en el bosque.", 'error'); return; }
-                const modelName = mn.data.model_name;
-                if(!modelName) { addLog("Error: El modelo no tiene nombre definido.", 'error'); return; }
-                addLog(`⚙️ Generando código C para '${modelName}'...`, 'info');
-                if(window.eel) {
-                    try {
-                        const res = await window.eel.api_export_c_model(modelName)();
-                        if(res.success) { addLog(`✅ ¡ÉXITO! Archivo guardado en:`, 'success'); addLog(res.path, 'output'); alert(`Código exportado correctamente en:\n${res.path}`); } 
-                        else { addLog(`❌ Falló la exportación: ${res.error}`, 'error'); }
-                    } catch(e) { addLog(`Error de comunicación con Python: ${e}`, 'error'); }
-                } else { addLog("Error: Backend Eel no detectado.", 'error'); }
-            };
-
-            const checkMemory = async () => {
-                const mn = nodes.find(n => n.type.includes('train'));
-                if (!mn) { addLog("Sin modelos", 'warn'); return; }
-                try {
-                    const res = await window.eel.api_estimate_memory_desktop(mn.data.model_name)();
-                    if(res.error) addLog(res.error, 'error');
-                    else { setMemoryStats(res); addLog(`Flash: ${res.flash_percent}%`, 'success'); }
-                } catch(e) { addLog(e, 'error'); }
-            };
-
             const saveProject = async () => {
-            // Función real de guardado (se ejecutará después del modal)
-            const performSave = async (name) => {
-                closeModal();
-                if (!name) return;
+                const performSave = async (name) => {
+                    closeModal();
+                    if (!name) return;
 
-                const data = { blocks: nodes.map(n=>({...n, type:n.type})), edges, mode };
-                try {
-                    let res;
-                    if (mode === 'ml') { 
-                        res = await window.eel.api_save_model_file(data, name)(); 
-                        if (res.success) addLog(`Modelo ML guardado: ${name}.edubotml`, 'success'); 
-                    } else { 
-                        res = await window.eel.api_save_project(data, name)(); 
-                        if (res.success) addLog(`Proyecto guardado: ${name}.edubotproj`, 'success'); 
-                    }
+                    const data = { blocks: nodes.map(n=>({...n, type:n.type})), edges };
+                    try {
+                        const res = await window.eel.api_save_project(data, name)(); 
+                        if (res.success) {
+                            addLog(`Proyecto guardado: ${name}.edubotproj`, 'success'); 
+                            setCurrentName(name); 
+                        } else { 
+                            addLog(`Error guardando: ${res.error}`, 'error'); 
+                        }
+                    } catch(e) { addLog(e, 'error'); }
+                };
 
-                    if (res.success) { setCurrentName(name); } 
-                    else { addLog(`Error guardando: ${res.error}`, 'error'); }
-                } catch(e) { addLog(e, 'error'); }
+                if (currentName) {
+                    performSave(currentName);
+                } else {
+                    setModalConfig({
+                        isOpen: true, type: 'prompt', title: 'Guardar Proyecto',
+                        message: 'Ingresa un nombre para tu archivo:',
+                        onConfirm: (val) => performSave(val), 
+                        onCancel: closeModal
+                    });
+                }
             };
-
-            // Si ya tiene nombre, guardamos directo. Si no, abrimos modal.
-            if (currentName) {
-                performSave(currentName);
-            } else {
-                setModalConfig({
-                    isOpen: true,
-                    type: 'prompt',
-                    title: 'Guardar Proyecto',
-                    message: 'Ingresa un nombre para tu archivo:',
-                    onConfirm: (val) => performSave(val), // Recibe el valor del input
-                    onCancel: closeModal
-                });
-            }
-        };
 
             const trashProject = async () => {
                 if (!currentName) {
@@ -1316,15 +1053,14 @@
                 }
                 if (confirm(`¿ESTÁS SEGURO?\n\nEl proyecto '${currentName}' será enviado a la Papelera de Reciclaje.\nEsta acción cerrará el editor.`)) {
                     try {
-                        const fileType = mode === 'ml' ? 'model' : 'project';
-                        const res = await window.eel.api_move_to_trash(currentName, fileType)();
+                        const res = await window.eel.api_move_to_trash(currentName, 'project')();
                         if (res.success) { alert("Proyecto enviado a la papelera exitosamente."); onBack(); } else { alert(`Error al eliminar: ${res.error}`); }
                     } catch (e) { alert(`Error de sistema: ${e}`); }
                 }
             };
 
             useEffect(() => { if (activeTab === 'code' && codeRef.current && window.Prism) { window.Prism.highlightElement(codeRef.current); } }, [activeTab, pythonCode]);
-            //useEffect(() => { const hasSeenTutorial = localStorage.getItem('edubot_tutorial_completed'); if (!hasSeenTutorial) { localStorage.setItem('edubot_tutorial_completed', 'true'); setShowTutorial(true); } }, []);
+            
             const finishTutorial = () => { localStorage.setItem('edubot_tutorial_completed', 'true'); setShowTutorial(false); };
 
             return (
@@ -1333,12 +1069,11 @@
                     <div className="h-14 bg-gray-900 border-b border-gray-700 flex items-center px-4 justify-between shrink-0">
                         <div className="flex items-center gap-4">
                             <button onClick={onBack} className="text-gray-400 hover:text-white flex items-center gap-1 text-sm font-bold"><ArrowLeft size={16}/> Inicio</button>
-                            <div className="text-xs text-gray-500 font-mono"> {currentName ? `Archivo: ${currentName}${mode==='ml'?'.edubotml':'.edubotproj'}` : '• Sin Guardar'}</div>
+                            <div className="text-xs text-gray-500 font-mono"> {currentName ? `Archivo: ${currentName}.edubotproj` : '• Sin Guardar'}</div>
                             <div className="h-6 w-px bg-gray-700"></div>
                             <div className="flex bg-gray-800 rounded p-1">
-                                <button onClick={() => setActiveTab('forest')} className={`px-3 py-1 rounded text-xs font-medium ${activeTab==='forest'?'bg-gray-600 text-white':'text-gray-400'}`}>Bosque</button>
-                                {mode==='ml' && <button onClick={() => setActiveTab('simulation')} className={`px-3 py-1 rounded text-xs font-medium ${activeTab==='simulation'?'bg-gray-600 text-white':'text-gray-400'}`}>Simulación</button>}
-                                <button onClick={() => { setActiveTab('code'); translateToCode(); }} className={`px-3 py-1 rounded text-xs font-medium ${activeTab==='code'?'bg-gray-600 text-white':'text-gray-400'}`}>Python</button>
+                                <button onClick={() => setActiveTab('forest')} className={`px-3 py-1 rounded text-xs font-medium ${activeTab==='forest'?'bg-gray-600 text-white':'text-gray-400'}`}>Bosque Visual</button>
+                                <button onClick={() => { setActiveTab('code'); translateToCode(); }} className={`px-3 py-1 rounded text-xs font-medium ${activeTab==='code'?'bg-gray-600 text-white':'text-gray-400'}`}>Código Python</button>
                             </div>
                         </div>
                         <div className="flex gap-2">
@@ -1350,51 +1085,34 @@
                             <div className="h-6 w-px bg-gray-700 mx-1"></div>
                             <button onClick={() => setShowSettings(true)} className="p-2 rounded hover:bg-gray-700 text-gray-400 hover:text-white mr-2" title="Preferencias"> <Settings size={18} /> </button>
                             <button onClick={() => setShowTutorial(true)} className="p-2 rounded hover:bg-gray-700 text-yellow-400 mr-2" title="Ver Tutorial"><span className="text-xs font-bold border border-yellow-400 rounded-full w-5 h-5 flex items-center justify-center">?</span></button>
-                            <div className="h-6 w-px bg-gray-700 mx-1"></div>
-                            {mode==='ml' && (<><button onClick={checkMemory} className="bg-gray-800 px-3 py-1.5 rounded text-xs text-gray-300 border border-gray-700 hover:border-gray-600 flex gap-2"><Cpu size={14}/> Memoria</button><button onClick={exportToC} className="bg-gray-800 px-3 py-1.5 rounded text-xs text-gray-300 border border-gray-700 hover:border-gray-600 flex gap-2"><Cpu size={14}/> Exportar C</button></>)}
                             <button onClick={runPipeline} className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded text-sm font-semibold flex items-center gap-2 shadow-lg"><Play size={16} fill="currentColor"/> Ejecutar</button>
                         </div>
                     </div>
                     <div className="flex-1 flex overflow-hidden">
                         <div className="w-64 bg-gray-900 border-r border-gray-700 flex flex-col shrink-0">
-                            <div className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-800">{mode==='ml'?'Machine Learning':'Python'}</div>
+                            <div className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-800">Bloques Python</div>
                             <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                                {mode==='ml' ? (<>
-                                    <SidebarBtn label="Dataset" icon={Database} color="text-blue-400" nodeType="ml_dataset" onDragStart={onDragStart} />
-                                    <div className="my-2 border-t border-gray-800"></div>
-                                    <SidebarBtn label="Decision Tree" icon={GitBranch} color="text-emerald-400" nodeType="ml_train_dt" onDragStart={onDragStart} />
-                                    <SidebarBtn label="Random Forest" icon={Layers} color="text-emerald-500" nodeType="ml_train_rf" onDragStart={onDragStart} />
-                                    <SidebarBtn label="KNN" icon={Users} color="text-purple-400" nodeType="ml_train_knn" onDragStart={onDragStart} />
-                                    <SidebarBtn label="SVM" icon={Split} color="text-pink-400" nodeType="ml_train_svm" onDragStart={onDragStart} />
-                                    <SidebarBtn label="Linear Reg" icon={ArrowRight} color="text-cyan-400" nodeType="ml_train_linear" onDragStart={onDragStart} />
-                                    <SidebarBtn label="Neural Net" icon={Brain} color="text-indigo-400" nodeType="ml_train_nn" onDragStart={onDragStart} />
-                                    <div className="my-2 border-t border-gray-800"></div>
-                                    <SidebarBtn label="Ejecutar" icon={PlayCircle} color="text-red-400" nodeType="ml_predict" onDragStart={onDragStart} />
-                                </>) : (<>
-                                    <SidebarBtn label="Variable" icon={Variable} color="text-yellow-400" nodeType="py_var" onDragStart={onDragStart} />
-                                    <SidebarBtn label="Input" icon={Keyboard} color="text-slate-400" nodeType="py_input" onDragStart={onDragStart} />
-                                    <SidebarBtn label="Print" icon={Terminal} color="text-gray-400" nodeType="py_print" onDragStart={onDragStart} />
-                                    <div className="my-2 border-t border-gray-800"></div>
-                                    <SidebarBtn label="If" icon={Split} color="text-orange-400" nodeType="py_if" onDragStart={onDragStart} />
-                                    <SidebarBtn label="For" icon={Repeat} color="text-orange-500" nodeType="py_loop" onDragStart={onDragStart} />
-                                    <SidebarBtn label="While" icon={RefreshCw} color="text-orange-600" nodeType="py_while" onDragStart={onDragStart} />
-                                    <SidebarBtn label="Control" icon={XCircle} color="text-red-500" nodeType="py_control" onDragStart={onDragStart} />
-                                    <div className="my-2 border-t border-gray-800"></div>
-                                    <SidebarBtn label="Math" icon={Calculator} color="text-teal-400" nodeType="py_math" onDragStart={onDragStart} />
-                                    <SidebarBtn label="Compare" icon={CheckSquare} color="text-cyan-400" nodeType="py_compare" onDragStart={onDragStart} />
-                                    <SidebarBtn label="Function" icon={FunctionSquare} color="text-violet-400" nodeType="py_func" onDragStart={onDragStart} />
-                                    <SidebarBtn label="Return" icon={ArrowLeft} color="text-rose-400" nodeType="py_return" onDragStart={onDragStart} />
-                                    <div className="my-2 border-t border-gray-800"></div>
-                                    <SidebarBtn label="Class" icon={Box} color="text-indigo-400" nodeType="py_class" onDragStart={onDragStart} />
-                                    <SidebarBtn label="Import" icon={Package} color="text-sky-400" nodeType="py_import" onDragStart={onDragStart} />
-                                    <SidebarBtn label="Try/Except" icon={AlertTriangle} color="text-amber-400" nodeType="py_try" onDragStart={onDragStart} />
-                                </>)}
+                                <SidebarBtn label="Variable" icon={Variable} color="text-yellow-400" nodeType="py_var" onDragStart={onDragStart} />
+                                <SidebarBtn label="Input" icon={Keyboard} color="text-slate-400" nodeType="py_input" onDragStart={onDragStart} />
+                                <SidebarBtn label="Print" icon={Terminal} color="text-gray-400" nodeType="py_print" onDragStart={onDragStart} />
+                                <div className="my-2 border-t border-gray-800"></div>
+                                <SidebarBtn label="If" icon={Split} color="text-orange-400" nodeType="py_if" onDragStart={onDragStart} />
+                                <SidebarBtn label="For" icon={Repeat} color="text-orange-500" nodeType="py_loop" onDragStart={onDragStart} />
+                                <SidebarBtn label="While" icon={RefreshCw} color="text-orange-600" nodeType="py_while" onDragStart={onDragStart} />
+                                <SidebarBtn label="Control" icon={XCircle} color="text-red-500" nodeType="py_control" onDragStart={onDragStart} />
+                                <div className="my-2 border-t border-gray-800"></div>
+                                <SidebarBtn label="Math" icon={Calculator} color="text-teal-400" nodeType="py_math" onDragStart={onDragStart} />
+                                <SidebarBtn label="Compare" icon={CheckSquare} color="text-cyan-400" nodeType="py_compare" onDragStart={onDragStart} />
+                                <SidebarBtn label="Function" icon={FunctionSquare} color="text-violet-400" nodeType="py_func" onDragStart={onDragStart} />
+                                <SidebarBtn label="Return" icon={ArrowLeft} color="text-rose-400" nodeType="py_return" onDragStart={onDragStart} />
+                                <div className="my-2 border-t border-gray-800"></div>
+                                <SidebarBtn label="Class" icon={Box} color="text-indigo-400" nodeType="py_class" onDragStart={onDragStart} />
+                                <SidebarBtn label="Import" icon={Package} color="text-sky-400" nodeType="py_import" onDragStart={onDragStart} />
+                                <SidebarBtn label="Try/Except" icon={AlertTriangle} color="text-amber-400" nodeType="py_try" onDragStart={onDragStart} />
                             </div>
-                            {mode==='ml' && memoryStats && <div className="p-3 bg-gray-800 border-t border-gray-700 text-[10px] font-mono"><div>Flash: {memoryStats.flash_percent}%</div></div>}
                         </div>
                         <div className="flex-1 relative bg-[#1e1e1e]" ref={reactFlowWrapper}>
                             {activeTab==='forest' ? <div className="h-full w-full"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} edgeTypes={edgeTypes} onInit={setReactFlowInstance} onDrop={onDrop} onDragOver={onDragOver} nodeTypes={nodeTypes} fitView snapToGrid={prefs.snapToGrid} snapGrid={[15,15]} connectionLineType={prefs.connectionStyle}> {prefs.showMinimap && <RFObj.MiniMap style={{background:'#1a1a1a'}} nodeStrokeColor="#555" />} <Background color="#333" gap={20} /><Controls className="bg-gray-800 border-gray-700 fill-white text-white" /></ReactFlow></div> :
-                             activeTab==='simulation' && mode==='ml' ? <SimulationView active={simulationStatus.active} status={simulationStatus.status} modelType={activeModelType} /> :
                              <div className="h-full w-full relative bg-[#1d1f21] overflow-auto custom-scrollbar group">
                                     <button onClick={() => {navigator.clipboard.writeText(pythonCode); addLog("Código copiado al portapapeles", "success")}} className="absolute top-4 right-4 bg-gray-700/50 hover:bg-gray-600 text-gray-300 p-2 rounded-lg backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Copiar Código"><Code size={16} /></button>
                                     <pre className="!m-0 !p-6 !bg-transparent !font-mono !text-sm min-h-full" style={{tabSize: 4}}><code ref={codeRef} className="language-python">{pythonCode}</code></pre>
@@ -1420,7 +1138,6 @@
 
         const Main = () => {
             const [view, setView] = useState('welcome');
-            const [mode, setMode] = useState('ml');
             const [initialData, setInitialData] = useState(null);
             const [currentName, setCurrentName] = useState(null);
 
@@ -1432,8 +1149,7 @@
             const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
             // ------------------------------------------------------------------
 
-            const handleNewProject = (selectedMode) => { 
-                setMode(selectedMode); 
+            const handleNewProject = () => { 
                 setInitialData(null); 
                 setCurrentName(null); 
                 setView('editor'); 
@@ -1451,12 +1167,10 @@
                         try { 
                             const data = await window.eel.api_load_project(name)(); 
                             if(data && !data.error) { 
-                                setMode(data.mode || 'ml'); 
                                 setInitialData(data); 
                                 setCurrentName(data._found_name || name); 
                                 setView('editor'); 
                             } else {
-                                // Reutilizamos el modal para mostrar error
                                 setTimeout(() => setModalConfig({
                                    isOpen: true, type: 'alert', title: 'Error', 
                                    message: "Error: " + (data.error || "No se pudo cargar"),
@@ -1475,7 +1189,6 @@
                         <WelcomeScreen onNew={handleNewProject} onOpen={handleOpenProject} />
                     ) : (
                         <Editor 
-                            mode={mode} 
                             onBack={() => setView('welcome')} 
                             initialNodes={initialData?.blocks} 
                             initialEdges={initialData?.edges} 
@@ -1484,8 +1197,6 @@
                         />
                     )}
                     
-                    {/* Renderizamos el modal solo si estamos en la vista 'welcome' */}
-                    {/* (El Editor tiene su propio modal interno) */}
                     {view === 'welcome' && <CustomModal {...modalConfig} />}
                 </>
             );
