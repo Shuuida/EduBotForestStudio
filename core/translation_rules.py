@@ -63,8 +63,11 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
         target = _safe_str(block.get('target', 'res'))
         left = _safe_str(block.get('left', '0'))
         right = _safe_str(block.get('right', '0'))
+        # Leemos el operador, pero si viene vacío ("") o es inválido, forzamos el '+'
         op = block.get('op', '+')
-        # Si no hay target, es una expresión suelta (raro en scripts, pero posible)
+        if not op or op not in ['+', '-', '*', '/']:
+            op = '+'
+        # Si no hay target, es una expresión suelta
         if not target:
             return f"{indent}{left} {op} {right}\n"
         return f"{indent}{target} = {left} {op} {right}\n"
@@ -90,9 +93,13 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
 
     # Comparaciones (Sueltas o para IF)
     if b_type == 'py_compare':
-        # Nota: Normalmente esto iría dentro de un If, pero si está suelto:
         left = _safe_str(block.get('left', 'a'))
+        # Leemos el operador, pero si viene vacío ("") o es inválido, forzamos el '=='
         op = block.get('op', '==')
+        valid_ops = ['==', '!=', '>', '<', '>=', '<=']
+        if not op or op not in valid_ops:
+            op = '=='
+            
         right = _safe_str(block.get('right', 'b'))
         return f"{indent}{left} {op} {right}\n"
 
@@ -102,6 +109,17 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
     if b_type == 'py_if':
         cond = _safe_str(block.get('condition', 'True'))
         header = f"{indent}if {cond}:\n"
+        return header + _generate_body(block.get('body', []), level + 1)
+
+    # Elif
+    if b_type == 'py_elif':
+        cond = _safe_str(block.get('condition', 'True'))
+        header = f"{indent}elif {cond}:\n"
+        return header + _generate_body(block.get('body', []), level + 1)
+
+    # Else
+    if b_type == 'py_else':
+        header = f"{indent}else:\n"
         return header + _generate_body(block.get('body', []), level + 1)
 
     # Loops
@@ -131,12 +149,16 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
         header = f"{indent}class {name}{base_str}:\n"
         return header + _generate_body(block.get('body', []), level + 1)
 
-    # Try/Except
+    # Try
     if b_type == 'py_try':
         header = f"{indent}try:\n"
-        try_body = _generate_body(block.get('body', []), level + 1)
-        except_blk = f"{indent}except Exception as e:\n{indent}    print(e)\n"
-        return header + try_body + except_blk
+        return header + _generate_body(block.get('body', []), level + 1)
+
+    # Except
+    if b_type == 'py_except':
+        err_type = _safe_str(block.get('error_type', 'Exception as e'))
+        header = f"{indent}except {err_type}:\n"
+        return header + _generate_body(block.get('body', []), level + 1)
 
     # Otros
     if b_type == 'py_return':
@@ -166,7 +188,15 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
         return f"{indent}import {names}\n"
 
     if b_type == 'py_control':
-        return f"{indent}{block.get('control_type', 'pass')}\n"
+        # Si el usuario no interactúa con el desplegable, la variable viene vacía.
+        # Forzamos a que el valor por defecto sea 'break', igual que en la interfaz visual.
+        c_type = block.get('control_type', 'break')
+        
+        # Validación extra de seguridad para evitar inyección de código
+        if c_type not in ['break', 'continue', 'pass']:
+            c_type = 'break'
+            
+        return f"{indent}{c_type}\n"
 
     # MACHINE LEARNING
     if ml_rules and b_type.startswith('ml_'):
@@ -209,7 +239,14 @@ def _ast_expr_to_str(node):
 
 def _parse_body(stmts: List[ast.stmt]) -> List[Dict[str, Any]]:
     """Parsea recursivamente una lista de sentencias AST."""
-    return [ast_node_to_block(n) for n in stmts]
+    blocks = []
+    for n in stmts:
+        res = ast_node_to_block(n)
+        if isinstance(res, list):
+            blocks.extend(res)
+        else:
+            blocks.append(res)
+    return blocks
 
 def ast_node_to_block(node: ast.AST) -> Dict[str, Any]:
     """Convierte un nodo AST en un diccionario de bloque."""
@@ -245,11 +282,31 @@ def ast_node_to_block(node: ast.AST) -> Dict[str, Any]:
 
     # Control de Flujo (Recursivo)
     if isinstance(node, ast.If):
-        return {
+        if_block = {
             "type": "py_if", 
             "condition": _ast_expr_to_str(node.test),
             "body": _parse_body(node.body)
         }
+        if node.orelse:
+            # Detección de Elif (En AST, un elif es un if dentro de un orelse)
+            if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
+                elif_res = ast_node_to_block(node.orelse[0])
+                if isinstance(elif_res, dict):
+                    elif_res['type'] = 'py_elif'
+                    return [if_block, elif_res]
+                elif isinstance(elif_res, list):
+                    elif_res[0]['type'] = 'py_elif'
+                    return [if_block] + elif_res
+            else:
+                # Detección de Else tradicional
+                else_block = {
+                    "type": "py_else",
+                    "body": _parse_body(node.orelse)
+                }
+                return [if_block, else_block]
+                
+        return if_block
+
     if isinstance(node, ast.For):
         return {
             "type": "py_loop", 
@@ -284,13 +341,32 @@ def ast_node_to_block(node: ast.AST) -> Dict[str, Any]:
 
     # Try/Except
     if isinstance(node, ast.Try):
-        # Mapeamos el cuerpo principal al bloque.
-        # Nota: Los handlers (except) son complejos de mapear visualmente en un solo nodo.
-        # Por ahora capturamos el cuerpo del try.
-        return {
+        try_block = {
             "type": "py_try",
             "body": _parse_body(node.body)
         }
+        
+        blocks = [try_block]
+        
+        # Iteramos sobre todos los bloques 'except' que tenga el código
+        for handler in node.handlers:
+            err_type = ""
+            if handler.type:
+                err_type = _ast_expr_to_str(handler.type)
+                # Si el error tiene un alias (ej: except ValueError as e)
+                if handler.name:
+                    err_type += f" as {handler.name}"
+            else:
+                err_type = "Exception as e"
+                
+            except_block = {
+                "type": "py_except",
+                "error_type": err_type,
+                "body": _parse_body(handler.body)
+            }
+            blocks.append(except_block)
+            
+        return blocks
 
     # Expresiones
     if isinstance(node, ast.Expr):
