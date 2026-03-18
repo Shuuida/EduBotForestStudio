@@ -81,6 +81,13 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
         safe_prompt = f"'{prompt}'" if prompt else "''"
         return f"{indent}{target} = input({safe_prompt})\n"
 
+    # Transformación de Tipos (Casting a Int / Float)
+    if b_type in ['py_int', 'py_float']:
+        target = _safe_str(block.get('target', 'res'))
+        val = _safe_str(block.get('value', '0'))
+        func = 'int' if b_type == 'py_int' else 'float'
+        return f"{indent}{target} = {func}({val})\n"
+
     # Comparaciones (Sueltas o para IF)
     if b_type == 'py_compare':
         # Nota: Normalmente esto iría dentro de un If, pero si está suelto:
@@ -214,6 +221,16 @@ def ast_node_to_block(node: ast.AST) -> Dict[str, Any]:
         if isinstance(node.value, ast.Call) and _ast_expr_to_str(node.value.func) == 'input':
             prompt = _ast_expr_to_str(node.value.args[0]) if node.value.args else '""'
             return {"type": "py_input", "target": target, "prompt": prompt}
+
+        if isinstance(node.value, ast.Call):
+            func_name = _ast_expr_to_str(node.value.func)
+            if func_name in ['int', 'float']:
+                arg_val = _ast_expr_to_str(node.value.args[0]) if node.value.args else '0'
+                return {
+                    "type": f"py_{func_name}", 
+                    "target": target, 
+                    "value": arg_val
+                }
         # Math
         if isinstance(node.value, ast.BinOp):
             return {
