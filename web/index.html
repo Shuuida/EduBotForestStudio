@@ -382,17 +382,33 @@
             );
         };
 
-        const TerminalLog = ({ logs }) => {
+        const TerminalLog = ({ logs, isWaitingInput, terminalInput, setTerminalInput, handleTerminalSubmit }) => {
             const endRef = useRef(null);
-            useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [logs]);
+            useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [logs, isWaitingInput]);
             return (
-                <div className="vscode-terminal p-3 h-full overflow-y-auto text-sm">
-                    {logs.map((log, i) => {
-                        let cl = 'text-gray-400';
-                        if (log.type === 'error') cl = 'text-red-400'; else if (log.type === 'warn') cl = 'text-yellow-400'; else if (log.type === 'success') cl = 'text-green-400'; else if (log.type === 'output') cl = 'text-white';
-                        return <div key={i} className={`whitespace-pre-wrap break-words mb-0.5 ${cl}`}>{log.type !== 'output' && <span className="opacity-50 text-xs mr-2 select-none">[{log.time}]</span>}<span>{log.msg}</span></div>;
-                    })}
-                    <div ref={endRef} />
+                <div className="vscode-terminal p-3 h-full overflow-y-auto text-sm flex flex-col">
+                    <div className="flex-1">
+                        {logs.map((log, i) => {
+                            let cl = 'text-gray-400';
+                            if (log.type === 'error') cl = 'text-red-400'; else if (log.type === 'warn') cl = 'text-yellow-400'; else if (log.type === 'success') cl = 'text-green-400'; else if (log.type === 'output') cl = 'text-white';
+                            return <div key={i} className={`whitespace-pre-wrap break-words mb-0.5 ${cl}`}>{log.type !== 'output' && <span className="opacity-50 text-xs mr-2 select-none">[{log.time}]</span>}<span>{log.msg}</span></div>;
+                        })}
+                        {isWaitingInput && (
+                            <div className="flex items-center mt-1 animate-fade-in">
+                                <span className="text-blue-400 font-bold mr-2 animate-pulse">❯</span>
+                                <input 
+                                    autoFocus
+                                    type="text"
+                                    className="flex-1 bg-transparent border-none outline-none text-yellow-300 font-mono"
+                                    value={terminalInput}
+                                    onChange={e => setTerminalInput(e.target.value)}
+                                    onKeyDown={handleTerminalSubmit}
+                                    placeholder="Escribe tu respuesta y presiona Enter..."
+                                />
+                            </div>
+                        )}
+                        <div ref={endRef} />
+                    </div>
                 </div>
             );
         };
@@ -913,6 +929,8 @@
             const [logs, setLogs] = useState([{ time: new Date().toLocaleTimeString(), msg: `IDE Python Listo`, type: 'info' }]);
             const [activeTab, setActiveTab] = useState('forest'); 
             const [pythonCode, setPythonCode] = useState("# El código generado aparecerá aquí...");
+            const [isWaitingInput, setIsWaitingInput] = useState(false);
+            const [terminalInput, setTerminalInput] = useState('');
             const codeRef = useRef(null);
             
             const reactFlowWrapper = useRef(null);
@@ -923,6 +941,30 @@
             });
             const [showSettings, setShowSettings] = useState(false);
             const [showTeacherDashboard, setShowTeacherDashboard] = useState(false);
+
+
+            useEffect(() => {
+                // Escuchando los prints de Python en tiempo real
+                window.eel.expose(api_realtime_log, 'api_realtime_log');
+                function api_realtime_log(text) {
+                    setLogs(p => [...p, { time: new Date().toLocaleTimeString(), msg: text, type: 'output' }]);
+                }
+
+                // Escuchando la solicitud de Input de Python
+                window.eel.expose(trigger_frontend_input, 'trigger_frontend_input');
+                function trigger_frontend_input() {
+                    setIsWaitingInput(true);
+                }
+            }, []);
+
+            const handleTerminalSubmit = async (e) => {
+                if (e.key === 'Enter') {
+                    const val = terminalInput;
+                    setTerminalInput('');
+                    setIsWaitingInput(false);
+                    await window.eel.api_provide_input(val)();
+                }
+            };
 
             useEffect(() => {
                 const root = document.documentElement;
@@ -1012,20 +1054,18 @@
             };
 
             const runPipeline = async () => {
-                addLog("Ejecutando...", 'warn');
+                setLogs([{ time: new Date().toLocaleTimeString(), msg: "Iniciando Sandbox...", type: 'warn' }]); 
                 setEdges(eds => eds.map(e => ({ ...e, data: { status: 'active' } })));
                 const blocks = serializeNodesLinear(nodes, edges);
                 try {
                     if (window.eel) {
                         const res = await window.eel.api_execute(blocks)();
                         if (res.success) {
-                            addLog("Finalizado.", 'success');
-                            if(res.output) addLog(res.output, 'output');
-                            setTimeout(() => { setEdges(eds => eds.map(e => ({ ...e, data: { status: 'idle' } }))); }, 500);
+                            addLog("Ejecución finalizada.", 'success');
                         } else {
                             addLog(`Error: ${res.error}`, 'error');
-                            setEdges(eds => eds.map(e => ({ ...e, data: { status: 'error' } })));
                         }
+                        setEdges(eds => eds.map(e => ({ ...e, data: { status: 'idle' } })));
                     }
                 } catch (e) { 
                     addLog(`Error: ${e}`, 'error');
@@ -1145,7 +1185,19 @@
                             }
                         </div>
                     </div>
-                    <div className="h-40 border-t border-gray-700 flex flex-col bg-black shrink-0"><div className="bg-gray-800 text-[10px] uppercase font-bold tracking-wider px-3 py-1 text-gray-400 border-b border-gray-700 flex justify-between"><span>Terminal</span><button onClick={()=>setLogs([])} className="hover:text-white">Clear</button></div><TerminalLog logs={logs} /></div>
+                    <div className="h-40 border-t border-gray-700 flex flex-col bg-black shrink-0">
+                        <div className="bg-gray-800 text-[10px] uppercase font-bold tracking-wider px-3 py-1 text-gray-400 border-b border-gray-700 flex justify-between">
+                            <span>Terminal Interactiva</span>
+                            <button onClick={()=>setLogs([])} className="hover:text-white">Clear</button>
+                        </div>
+                        <TerminalLog 
+                            logs={logs} 
+                            isWaitingInput={isWaitingInput}
+                            terminalInput={terminalInput}
+                            setTerminalInput={setTerminalInput}
+                            handleTerminalSubmit={handleTerminalSubmit}
+                        />
+                    </div>
                     <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} prefs={prefs} setPrefs={setPrefs}/>
                     {showTeacherDashboard && <TeacherDashboard onClose={() => setShowTeacherDashboard(false)} />}
                     <CustomModal {...modalConfig} />

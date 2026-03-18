@@ -5,12 +5,18 @@ Permite la importación controlada de módulos del núcleo (MiniML).
 """
 
 import io
+import sys
+import eel
 import traceback
 import threading
 import queue
 import importlib
 from contextlib import redirect_stdout
 from typing import Dict, Any
+
+
+input_queue = queue.Queue()
+is_waiting_for_user = False
 
 # -------------------------------------
 # CONFIGURACIÓN DE SEGURIDAD
@@ -43,6 +49,18 @@ def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
 # ---------------------------------------------
 # EJECUTOR PRINCIPAL
 
+class RealTimeStdout:
+    """Intercepta los prints y los envía a la interfaz de React al instante."""
+    def write(self, text):
+        # Filtramos los saltos de línea vacíos que hace print por defecto
+        if text and text != '\n': 
+            try:
+                eel.api_realtime_log(str(text))()
+            except Exception:
+                pass
+    def flush(self):
+        pass
+
 def sanitize_code(code: str) -> str:
     """Evita palabras clave peligrosas antes de la ejecución."""
     forbidden = [
@@ -58,114 +76,100 @@ def sanitize_code(code: str) -> str:
     return code
 
 def execute_user_code(code: str, timeout: int = 5) -> Dict[str, Any]:
-    """
-    Ejecuta el código de usuario en un hilo separado con stdout capturado.
-    
-    Args:
-        code (str): Código Python a ejecutar.
-        timeout (int): Tiempo máximo de ejecución en segundos.
-        
-    Returns:
-        dict: {'success': bool, 'output': str, 'error': str}
-    """
+    global is_waiting_for_user
     result = {'success': False, 'output': '', 'error': ''}
     
+    # Limpiar cualquier residuo de inputs de ejecuciones pasadas
+    while not input_queue.empty():
+        input_queue.get_nowait()
+        
     def target(q):
-        buffer = io.StringIO()
+        global is_waiting_for_user
         try:
-            # Saneamiento básico
             safe_code = sanitize_code(code)
-
-            def dummy_input(prompt=""):
-                # Imprime el mensaje del estudiante de forma natural y limpia
-                if prompt:
-                    print(prompt)
-                # Retornamos "" silenciosamente para que la ejecución no se detenga
-                # (Útil por si luego conectan esto a un nodo de matemáticas)
-                return ""
             
-            # Configuración del entorno restringido (Sandbox)
-            # Definimos qué funciones 'built-in' puede ver el estudiante
+            def interactive_input(prompt=""):
+                global is_waiting_for_user
+                if prompt:
+                    try: eel.api_realtime_log(str(prompt))()
+                    except: pass
+                
+                # Avisar a React que habilite la caja de texto
+                try: eel.trigger_frontend_input()()
+                except: pass
+                
+                # Bloquear el hilo de Python hasta que React responda
+                is_waiting_for_user = True
+                user_response = input_queue.get() 
+                is_waiting_for_user = False
+                
+                # Hacer eco de la respuesta en la terminal visual
+                try: eel.api_realtime_log(f"❯ {user_response}")()
+                except: pass
+                
+                return str(user_response)
+
             safe_builtins_map = {
-                # Básicos
                 'print': print,
-                'input': dummy_input,
-                'range': range,
-                'len': len,
-                'int': int,
-                'float': float,
-                'str': str,
-                'list': list,
-                'dict': dict,
-                'set': set,
-                'tuple': tuple,
-                'bool': bool,
-                
-                # Matemáticas y Utilidades
-                'abs': abs,
-                'min': min,
-                'max': max,
-                'sum': sum,
-                'round': round,
-                'zip': zip,
-                'map': map,
-                'filter': filter,
-                'sorted': sorted,
-                'enumerate': enumerate,
-                
-                # Excepciones
-                'Exception': Exception,
-                'ValueError': ValueError,
-                'TypeError': TypeError,
-                
-                # Soporte para Clases y POO
-                '__build_class__': __build_class__,  
-                'object': object,                    # Necesario para herencia base
-                'super': super,                      # Necesario para llamar al padre
-                'classmethod': classmethod,          # Decorador útil para enseñar POO
-                'staticmethod': staticmethod,        # Decorador útil para enseñar POO
-                'property': property,                # Getters/Setters pythonicos
-                'type': type,                        # Para introspección de tipos
-                'isinstance': isinstance,            # Validación de tipos
-                
-                # Sistema
+                'input': interactive_input,          # <- Nueva función interactiva
+                'range': range, 'len': len, 'int': int, 'float': float, 'str': str,
+                'list': list, 'dict': dict, 'set': set, 'tuple': tuple, 'bool': bool,
+                'abs': abs, 'min': min, 'max': max, 'sum': sum, 'round': round,
+                'zip': zip, 'map': map, 'filter': filter, 'sorted': sorted, 'enumerate': enumerate,
+                'Exception': Exception, 'ValueError': ValueError, 'TypeError': TypeError,
+                '__build_class__': __build_class__,  # Vital para los nodos Class
+                'object': object,                    
+                'super': super,                      
+                'classmethod': classmethod,          
+                'staticmethod': staticmethod,        
+                'property': property,                
+                'type': type,                        
+                'isinstance': isinstance,            
                 '__import__': safe_import,
-                '__name__': '__main__'               # Evita errores en algunos contextos de ejecución
+                '__name__': '__main__'               
             }
 
-            # Entorno global inicial
             env = {'__builtins__': safe_builtins_map}
 
-            # Ejecución
-            with redirect_stdout(buffer):
+            # Aplicar la redirección de consola en tiempo real
+            original_stdout = sys.stdout
+            sys.stdout = RealTimeStdout()
+            
+            try:
                 exec(safe_code, env)
+                q.put({'success': True, 'output': '', 'error': ''})
+            finally:
+                sys.stdout = original_stdout # Restaurar stdout por seguridad
 
-            q.put({'success': True, 'output': buffer.getvalue(), 'error': ''})
-
+        #Captura específica de errores
         except SyntaxError as se:
-            q.put({'success': False, 'output': buffer.getvalue(), 'error': f"Error de Sintaxis: {se}"})
+            q.put({'success': False, 'output': '', 'error': f"Error de Sintaxis: {se}"})
         except ImportError as ie:
-            q.put({'success': False, 'output': buffer.getvalue(), 'error': f"Error de Importación: {ie}"})
+            q.put({'success': False, 'output': '', 'error': f"Error de Importación: {ie}"})
         except Exception:
-            q.put({'success': False, 'output': buffer.getvalue(), 'error': traceback.format_exc()})
+            q.put({'success': False, 'output': '', 'error': traceback.format_exc()})
 
-    # Gestión de Hilos (Threading) para evitar bloqueos infinitos (while True)
+    # Ejecución en hilo secundario
     q = queue.Queue()
     thread = threading.Thread(target=target, args=(q,))
     thread.start()
     
-    try:
-        thread.join(timeout)
-        if thread.is_alive():
-            result['error'] = "Tiempo de ejecución excedido (Timeout). ¿Tienes un bucle infinito?"
-            # Nota: Python threads no se pueden matar forzosamente de forma segura, 
-            # pero el frontend dejará de esperar.
+    # TIMEOUT INTELIGENTE
+    time_elapsed = 0.0
+    while thread.is_alive() and time_elapsed < timeout:
+        # eel.sleep cede el control temporalmente a los WebSockets
+        # permitiendo que la interfaz reaccione en tiempo real sin bloquear el hilo principal.
+        eel.sleep(0.1) 
+        
+        if not is_waiting_for_user:
+            time_elapsed += 0.1
+            
+    if thread.is_alive():
+        result['error'] = "Tiempo de ejecución excedido (Timeout). ¿Tienes un bucle infinito?"
+    else:
+        if not q.empty():
+            result = q.get()
         else:
-            if not q.empty():
-                result = q.get()
-            else:
-                result['error'] = "Error desconocido: No se recibió respuesta del hilo."
-    except Exception as e:
-        result['error'] = str(e)
-
+            result['error'] = "Error desconocido: No se recibió respuesta del hilo."
+            
     return result
