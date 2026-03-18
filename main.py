@@ -16,6 +16,7 @@ import json
 #import yaml
 import hashlib
 from datetime import datetime
+from cryptography.fernet import Fernet
 
 #IMPORTACIONES DEL NÚCLEO DE EDUBOT
 from core.ml_adapter import Translator, execute_structs
@@ -29,7 +30,10 @@ from estimators import memory_estimator
 # import maker_edu.autograder
 # import maker_edu.dashboard
 
-
+# Esta llave es estática y vivirá compilada dentro del .exe.
+# Si un estudiante abre el grades.json, solo verá texto ilegible.
+SECRET_KEY = b'Z1h2U3E0dDdyOHU5eXpBMkMzRDRFNUY2RzhIOUkxSjI='
+cipher = Fernet(SECRET_KEY)
 
 BASE_PATH = file_handler.BASE_PATH
 # Definir ruta al navegador portable (dentro del proyecto)
@@ -557,24 +561,32 @@ def ensure_db_exists():
     if not os.path.exists(DB_FOLDER):
         os.makedirs(DB_FOLDER)
     if not os.path.exists(GRADES_FILE):
-        with open(GRADES_FILE, 'w', encoding='utf-8') as f:
-            json.dump([], f)
+        # Creamos un archivo vacío cifrado
+        empty_data = cipher.encrypt(b"[]")
+        with open(GRADES_FILE, 'wb') as f:
+            f.write(empty_data)
 
 @eel.expose
 def api_save_grade(student_name, challenge_id, score):
-    """
-    Guarda o actualiza la nota de un estudiante en un reto específico.
-    """
+    """Guarda o actualiza la nota cifrando el archivo completo en AES."""
     try:
         ensure_db_exists()
+        grades = []
         
-        with open(GRADES_FILE, 'r', encoding='utf-8') as f:
-            grades = json.load(f)
+        # LEER Y DESCIFRAR
+        if os.path.getsize(GRADES_FILE) > 0:
+            with open(GRADES_FILE, 'rb') as f:
+                file_content = f.read()
+                try:
+                    decrypted_data = cipher.decrypt(file_content)
+                    grades = json.loads(decrypted_data.decode('utf-8'))
+                except Exception:
+                    # Fallback: Si falla el descifrado, asume que es un JSON viejo en texto plano
+                    grades = json.loads(file_content.decode('utf-8'))
             
-        # Buscar si ya existe una entrada para este estudiante y reto
+        # ACTUALIZAR DATOS
         found = False
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # Asumimos que score >= 100 es aprobado (lógica simple)
         status = "Aprobado" if float(score) >= 100 else "Reprobado" 
         
         for record in grades:
@@ -594,8 +606,12 @@ def api_save_grade(student_name, challenge_id, score):
                 'timestamp': timestamp
             })
             
-        with open(GRADES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(grades, f, indent=4)
+        # CIFRAR Y GUARDAR
+        json_str = json.dumps(grades, indent=4)
+        encrypted_output = cipher.encrypt(json_str.encode('utf-8'))
+        
+        with open(GRADES_FILE, 'wb') as f:
+            f.write(encrypted_output)
             
         return {'success': True}
     except Exception as e:
@@ -603,13 +619,21 @@ def api_save_grade(student_name, challenge_id, score):
 
 @eel.expose
 def api_get_grades():
-    """
-    Recupera todas las notas para el Dashboard del profesor.
-    """
+    """Descifra las notas en memoria para enviarlas al Dashboard del profesor."""
     try:
         ensure_db_exists()
-        with open(GRADES_FILE, 'r', encoding='utf-8') as f:
-            grades = json.load(f)
+        grades = []
+        
+        if os.path.getsize(GRADES_FILE) > 0:
+            with open(GRADES_FILE, 'rb') as f:
+                file_content = f.read()
+                try:
+                    decrypted_data = cipher.decrypt(file_content)
+                    grades = json.loads(decrypted_data.decode('utf-8'))
+                except Exception:
+                    # Fallback JSON viejo
+                    grades = json.loads(file_content.decode('utf-8'))
+                    
         return {'success': True, 'grades': grades}
     except Exception as e:
         return {'success': False, 'error': str(e)}

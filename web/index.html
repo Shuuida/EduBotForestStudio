@@ -958,6 +958,19 @@
                 setNodes((nds) => nds.map((node) => node.id === id ? { ...node, data: newData } : node));
             };
 
+            useEffect(() => {
+                if (initialNodes && initialNodes.length > 0) {
+                    const reanimatedNodes = initialNodes.map(node => ({
+                        ...node,
+                        data: {
+                            ...node.data,
+                            onChange: onNodeDataChange
+                        }
+                    }));
+                    setNodes(reanimatedNodes);
+                }
+            }, []);
+
             const onDragOver = useCallback((event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }, []);
             
             const onDrop = useCallback((event) => {
