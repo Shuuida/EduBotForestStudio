@@ -19,6 +19,7 @@ exports/*.h
 trash/
 *.edubotproj
 *.json
+*.spec
 
 # === System / IDE files ===
 .DS_Store
@@ -30,3 +31,5 @@ firmware_export.json
 .idx/
 test_outputs/
 .ipynb_checkpoints/
+browser_profile/
+chromium/

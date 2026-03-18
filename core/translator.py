@@ -76,13 +76,13 @@ class Translator:
     def _inject_auto_runner(self, blocks: List[Dict]) -> str:
         """
         Genera el bloque if __name__ == "__main__": 
-        Detecta la última clase o función definida e intenta ejecutarla.
+        Ejecuta TODAS las clases y funciones huérfanas encontradas, 
+        respetando el orden visual del lienzo.
         """
-        runner_code = ""
-        target_found = False
+        runner_code = "\nif __name__ == '__main__':\n"
+        has_executable = False
 
-        # Recorremos los bloques para encontrar candidatos ejecutables (Clases o Funciones)
-        # Priorizamos Clases sobre Funciones sueltas
+        # Recorremos los bloques en el orden estricto que dictó el Frontend
         for block in blocks:
             b_type = block.get('type')
             
@@ -91,42 +91,43 @@ class Translator:
                 cls_name = block.get('name', 'MiClase')
                 body = block.get('body', [])
                 
-                # Buscamos si tiene métodos internos para llamarlos
+                # Buscamos todos los métodos internos
                 methods = [b for b in body if b.get('type') == 'py_func']
                 
-                runner_code = f"\nif __name__ == '__main__':\n"
                 runner_code += f"    try:\n"
-                runner_code += f"        # Instancia automática de la clase\n"
-                runner_code += f"        _app = {cls_name}()\n"
+                runner_code += f"        # Instancia de la clase {cls_name}\n"
+                runner_code += f"        _{cls_name}_inst = {cls_name}()\n"
                 
                 if methods:
-                    # Si hay métodos, intentamos llamar al primero
-                    m_name = methods[0].get('func_name', 'main')
-                    runner_code += f"        # Intento de ejecución del método '{m_name}'\n"
-                    runner_code += f"        try:\n"
-                    runner_code += f"            _app.{m_name}()\n"
-                    runner_code += f"        except TypeError:\n"
-                    runner_code += f"            _app.{m_name}(0) # Reintento con argumento dummy\n"
+                    for m in methods:
+                        m_name = m.get('func_name', 'main')
+                        # Evitar auto-llamar al constructor (__init__) repetidas veces
+                        if m_name != '__init__':
+                            runner_code += f"        try:\n"
+                            runner_code += f"            _{cls_name}_inst.{m_name}()\n"
+                            runner_code += f"        except TypeError:\n"
+                            runner_code += f"            _{cls_name}_inst.{m_name}(0) # Reintento con dummy\n"
                 else:
                     runner_code += f"        print('Clase {cls_name} instanciada correctamente.')\n"
                 
                 runner_code += f"    except Exception as e:\n"
-                runner_code += f"        print(f'Error en auto-ejecución: {{e}}')\n"
-                target_found = True
+                runner_code += f"        print(f'Error en clase {cls_name}: {{e}}')\n"
+                has_executable = True
 
-            # DETECCIÓN DE FUNCIÓN SUELTA (Si no hay clase aún)
-            elif b_type == 'py_func' and not target_found:
+            # DETECCIÓN DE FUNCIÓN SUELTA
+            elif b_type == 'py_func':
                 func_name = block.get('func_name', 'main')
-                runner_code = f"\nif __name__ == '__main__':\n"
                 runner_code += f"    try:\n"
                 runner_code += f"        {func_name}()\n"
                 runner_code += f"    except TypeError:\n"
                 runner_code += f"        {func_name}(0)\n"
                 runner_code += f"    except Exception as e:\n"
-                runner_code += f"        print(f'Error ejecutando función: {{e}}')\n"
-                # No marcamos target_found true para permitir que una clase posterior sobrescriba esto
-                # (Las clases suelen ser contenedores más importantes)
+                runner_code += f"        print(f'Error ejecutando función {func_name}: {{e}}')\n"
+                has_executable = True
 
+        if not has_executable:
+            return ""
+            
         return runner_code
 
     # ----------------------------------------------------

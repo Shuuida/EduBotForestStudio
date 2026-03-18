@@ -78,7 +78,8 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
     if b_type == 'py_input':
         target = _safe_str(block.get('target', 'entrada'))
         prompt = _safe_str(block.get('prompt', ''))
-        return f"{indent}{target} = input({prompt})\n"
+        safe_prompt = f"'{prompt}'" if prompt else "''"
+        return f"{indent}{target} = input({safe_prompt})\n"
 
     # Comparaciones (Sueltas o para IF)
     if b_type == 'py_compare':
@@ -158,7 +159,7 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
         return f"{indent}import {names}\n"
 
     if b_type == 'py_control':
-        return f"{indent}{block.get('type', 'pass')}\n"
+        return f"{indent}{block.get('control_type', 'pass')}\n"
 
     # MACHINE LEARNING
     if ml_rules and b_type.startswith('ml_'):

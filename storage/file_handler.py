@@ -18,8 +18,8 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 # Dependencias internas
-#from storage import ml_exporter
-#from core import ml_manager
+from storage import ml_exporter
+from core import ml_manager
 #from core import ml_struct_rules
 #from core import ml_adapter
 
@@ -31,15 +31,16 @@ def get_base_path():
         return os.path.dirname(sys.executable)
     else:
         # Si estamos ejecutando desde código fuente
-        return os.path.dirname(os.path.abspath(__file__))
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.dirname(current_dir)
 
 BASE_PATH = get_base_path()
 
 # Directorios base
 PROJECTS_DIR = os.path.join(BASE_PATH, "projects")
-# MODELS_DIR = os.path.join(BASE_PATH, "models")
-# DATASETS_DIR = os.path.join(BASE_PATH, "datasets")
-# EXPORTS_DIR = os.path.join(BASE_PATH, "exports")
+MODELS_DIR = os.path.join(BASE_PATH, "models")
+DATASETS_DIR = os.path.join(BASE_PATH, "datasets")
+EXPORTS_DIR = os.path.join(BASE_PATH, "exports")
 TRASH_DIR = os.path.join(BASE_PATH, "trash")
 
 # ---------------------------------------------
@@ -47,7 +48,7 @@ TRASH_DIR = os.path.join(BASE_PATH, "trash")
 
 def ensure_dir_exist():
     """Garantiza que todas las carpetas esenciales existan."""
-    for path in [PROJECTS_DIR, TRASH_DIR]:
+    for path in [PROJECTS_DIR, TRASH_DIR, MODELS_DIR, DATASETS_DIR, EXPORTS_DIR]:
         os.makedirs(path, exist_ok=True)
 
 def _get_path(directory: str, name: str, extension: str) -> str:
@@ -59,7 +60,7 @@ def _get_path(directory: str, name: str, extension: str) -> str:
 # -------------------------------------------------
 # GESTIÓN DE MODELOS (.edubotml)
 
-#* def save_model(model_name: str, filename: str) -> bool:
+def save_model(model_name: str, filename: str) -> bool:
     """
     Guarda un modelo entrenado (desde la memoria) al disco.
     """
@@ -94,7 +95,7 @@ def _get_path(directory: str, name: str, extension: str) -> str:
         print(f"[ERROR] No se pudo guardar el modelo: {e}")
         return False
 
-#* def load_model(filename: str) -> Any:
+def load_model(filename: str) -> Any:
     """
     Carga un modelo desde disco y lo registra en ml_manager.
     Retorna el objeto modelo instanciado.
@@ -128,7 +129,7 @@ def _get_path(directory: str, name: str, extension: str) -> str:
 # ------------------------------------------------
 # GESTIÓN DE DATASETS (.json)
 
-#* def save_dataset(data: List[List[float]], name: str) -> bool:
+def save_dataset(data: List[List[float]], name: str) -> bool:
     try:
         ensure_dir_exist()
         path = _get_path(DATASETS_DIR, name, ".json")
@@ -145,7 +146,7 @@ def _get_path(directory: str, name: str, extension: str) -> str:
         print(f"[ERROR] Guardando dataset: {e}")
         return False
 
-#* def _parse_csv_line(line: str) -> List[float]:
+def _parse_csv_line(line: str) -> List[float]:
     """Helper seguro para convertir línea CSV a lista de floats."""
     try:
         # Divide por comas y limpia espacios
@@ -156,7 +157,7 @@ def _get_path(directory: str, name: str, extension: str) -> str:
         # Si falla (ej: es un header 'x1,x2,y'), retorna None
         return None
 
-#* def load_dataset(name: str) -> List[List[float]]:
+def load_dataset(name: str) -> List[List[float]]:
     """
     Carga datasets soportando tanto JSON nativo como CSV importado.
     Prioriza CSV si se indica explícitamente o si existe el archivo.
@@ -248,7 +249,7 @@ def list_projs() -> List[str]:
 # -------------------------------------------------------
 # EXPORTACIÓN INVERSA (MODELO -> BLOQUES)
 
-#* def export_to_blocks(model_obj: Any, model_name: str) -> Dict[str, Any]:
+def export_to_blocks(model_obj: Any, model_name: str) -> Dict[str, Any]:
     """
     Convierte un objeto modelo en memoria a su representación visual (Bloque).
     Usa la nueva API de ml_exporter.
@@ -262,7 +263,7 @@ def list_projs() -> List[str]:
 # --------------------------------------------------
 # AUTO-EXPORT (Wrapper Genérico)
 
-#* def auto_export(content: Any, name: str) -> bool:
+def auto_export(content: Any, name: str) -> bool:
     """Detecta el tipo de contenido y lo guarda apropiadamente."""
     if isinstance(content, dict) and ("blocks" in content or "code" in content):
         return save_proj(content, name)
@@ -272,7 +273,7 @@ def list_projs() -> List[str]:
     # Por seguridad, no guardamos objetos arbitrarios aquí.
     return False
 
-#* def auto_import(path: str) -> Any:
+def auto_import(path: str) -> Any:
     """Carga inteligente basada en extensión."""
     if path.endswith(".edubotproj"):
         return load_proj(os.path.basename(path).replace(".edubotproj", ""))

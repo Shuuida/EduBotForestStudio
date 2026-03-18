@@ -47,7 +47,7 @@ def sanitize_code(code: str) -> str:
     """Evita palabras clave peligrosas antes de la ejecución."""
     forbidden = [
         'import os', 'import sys', 'import subprocess', '__import__', 
-        'eval(', 'exec(', 'open(', 'compile(', 'input(', 
+        'eval(', 'exec(', 'open(', 'compile(', 
         'globals()', 'locals()', 'vars()'
     ]
     # Nota: No bloqueamos 'import core' porque lo manejamos en safe_import
@@ -75,12 +75,17 @@ def execute_user_code(code: str, timeout: int = 5) -> Dict[str, Any]:
         try:
             # Saneamiento básico
             safe_code = sanitize_code(code)
+
+            def dummy_input(prompt=""):
+                print(f"[Aviso] Input detectado: {prompt} (Auto-respuesta: '0' por seguridad offline)")
+                return "0"
             
             # Configuración del entorno restringido (Sandbox)
             # Definimos qué funciones 'built-in' puede ver el estudiante
             safe_builtins_map = {
                 # Básicos
                 'print': print,
+                'input': dummy_input,
                 'range': range,
                 'len': len,
                 'int': int,
