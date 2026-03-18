@@ -80,9 +80,9 @@ def execute_user_code(code: str, timeout: int = 5) -> Dict[str, Any]:
                 # Imprime el mensaje del estudiante de forma natural y limpia
                 if prompt:
                     print(prompt)
-                # Retornamos "0" silenciosamente para que la ejecución no se detenga
+                # Retornamos "" silenciosamente para que la ejecución no se detenga
                 # (Útil por si luego conectan esto a un nodo de matemáticas)
-                return "0"
+                return ""
             
             # Configuración del entorno restringido (Sandbox)
             # Definimos qué funciones 'built-in' puede ver el estudiante
