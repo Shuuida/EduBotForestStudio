@@ -1113,16 +1113,62 @@
             };
 
             const trashProject = async () => {
+                // Caso 1: El proyecto no tiene nombre (es un borrador)
                 if (!currentName) {
-                    if(confirm("El proyecto no está guardado. ¿Deseas descartar todos los cambios y limpiar el editor?")) { setNodes([]); setEdges([]); setLogs([]); addLog("Editor limpiado (Borrador descartado)", 'warn'); }
+                    setModalConfig({
+                        isOpen: true, 
+                        type: 'confirm', 
+                        title: 'Descartar Borrador',
+                        message: 'El proyecto no está guardado. ¿Deseas descartar todos los cambios y limpiar el editor?',
+                        onConfirm: () => {
+                            setNodes([]); 
+                            setEdges([]); 
+                            setLogs([]); 
+                            addLog("Editor limpiado (Borrador descartado)", 'warn');
+                            closeModal();
+                        },
+                        onCancel: closeModal
+                    });
                     return;
                 }
-                if (confirm(`¿ESTÁS SEGURO?\n\nEl proyecto '${currentName}' será enviado a la Papelera de Reciclaje.\nEsta acción cerrará el editor.`)) {
-                    try {
-                        const res = await window.eel.api_move_to_trash(currentName, 'project')();
-                        if (res.success) { alert("Proyecto enviado a la papelera exitosamente."); onBack(); } else { alert(`Error al eliminar: ${res.error}`); }
-                    } catch (e) { alert(`Error de sistema: ${e}`); }
-                }
+
+                // Caso 2: El proyecto ya está guardado y se va a borrar de verdad
+                setModalConfig({
+                    isOpen: true, 
+                    type: 'confirm', 
+                    title: 'Mover a Papelera',
+                    message: `¿ESTÁS SEGURO?\n\nEl proyecto '${currentName}' será enviado a la Papelera de Reciclaje.\nEsta acción cerrará el editor.`,
+                    onConfirm: async () => {
+                        closeModal(); // Ocultamos la pregunta antes de procesar
+                        
+                        try {
+                            const res = await window.eel.api_move_to_trash(currentName, 'project')();
+                            
+                            if (res.success) {
+                                // Alerta de éxito personalizada
+                                setModalConfig({
+                                    isOpen: true, type: 'alert', title: 'Éxito', 
+                                    message: "Proyecto enviado a la papelera exitosamente.",
+                                    onConfirm: () => { closeModal(); onBack(); }
+                                });
+                            } else {
+                                // Alerta de error personalizada
+                                setModalConfig({
+                                    isOpen: true, type: 'alert', title: 'Error al eliminar', 
+                                    message: res.error,
+                                    onConfirm: closeModal
+                                });
+                            }
+                        } catch (e) {
+                            setModalConfig({
+                                isOpen: true, type: 'alert', title: 'Error de Sistema', 
+                                message: str(e),
+                                onConfirm: closeModal
+                            });
+                        }
+                    },
+                    onCancel: closeModal
+                });
             };
 
             useEffect(() => { if (activeTab === 'code' && codeRef.current && window.Prism) { window.Prism.highlightElement(codeRef.current); } }, [activeTab, pythonCode]);

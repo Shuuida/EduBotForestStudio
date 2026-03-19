@@ -8,6 +8,7 @@ de backend de EduBot en server.py.
 """
 
 import eel
+import eel.browsers
 import os
 import sys
 import platform
@@ -36,28 +37,51 @@ SECRET_KEY = b'Z1h2U3E0dDdyOHU5eXpBMkMzRDRFNUY2RzhIOUkxSjI='
 cipher = Fernet(SECRET_KEY)
 
 BASE_PATH = file_handler.BASE_PATH
-# Definir ruta al navegador portable (dentro del proyecto)
-if platform.system() == "Windows":
-    BROWSER_PATH = os.path.join(BASE_PATH, "chromium", "chrome.exe")
-else:
-    # Asumimos Linux/Mac
-    BROWSER_PATH = os.path.join(BASE_PATH, "chromium", "chrome")
+def get_chromium_path():
+    """Detecta la ruta de Chromium considerando PyInstaller (_internal) y el Sistema Operativo"""
+    # Detectar si estamos en el .exe o en VS Code
+    if hasattr(sys, '_MEIPASS'):
+        base_dir = sys._MEIPASS
+    else:
+        base_dir = os.path.abspath(os.path.dirname(__file__))
+        
+    # Detectar el Sistema Operativo para el nombre del ejecutable
+    if platform.system() == "Windows":
+        exe_name = "chrome.exe"
+    else:
+        # En Linux/Mac los binarios no llevan .exe
+        exe_name = "chrome"     # O "chromium"
+        
+    return os.path.join(base_dir, 'chromium', exe_name)
 
-# Configurar Eel para usar este navegador Específico
-if os.path.exists(BROWSER_PATH):
-    print(f"[INFO] Usando Chromium Portable: {BROWSER_PATH}")
-    eel.browsers.set_path('chrome', BROWSER_PATH)
-else:
-    print("[WARN] Chromium portable no encontrado. Intentando navegador del sistema...")
+CHROMIUM_PATH = get_chromium_path()
 
-# Inicialización de Eel
-# Aseguramos que la carpeta web exista
-if not os.path.exists('web'):
-    print("[ERROR CRÍTICO] La carpeta 'web' no existe. Asegúrate de haber creado el index.html allí.")
+# Configurar Eel para usar este navegador específico si existe
+if os.path.exists(CHROMIUM_PATH):
+    print(f"[INFO] Usando Chromium Portable en: {CHROMIUM_PATH}")
+    eel.browsers.set_path('chrome', CHROMIUM_PATH)
+else:
+    print(f"[WARN] Chromium portable no encontrado en: {CHROMIUM_PATH}")
+    print("El sistema usará el navegador por defecto (Edge/Chrome/Safari) como respaldo.")
+
+def get_web_path():
+    """Detecta inteligentemente dónde está la carpeta web (VS Code vs .exe)"""
+    if hasattr(sys, '_MEIPASS'):
+        # Si estamos dentro del .exe, PyInstaller guarda los datos en _MEIPASS (carpeta _internal)
+        return os.path.join(sys._MEIPASS, 'web')
+    else:
+        # Si estamos ejecutando el script normal en VS Code
+        return os.path.join(os.path.abspath(os.path.dirname(__file__)), 'web')
+
+WEB_PATH = get_web_path()
+
+if not os.path.exists(WEB_PATH):
+    print(f"[ERROR CRÍTICO] La carpeta 'web' no existe en la ruta esperada: {WEB_PATH}")
+    input("Presiona Enter para salir...")
     sys.exit()
 
-# Inicializamos apuntando a la carpeta donde está index.html
-eel.init('web')
+# Inicializamos Eel apuntando a la ruta absoluta blindada
+eel.init(WEB_PATH)
 
 # ---------------------------------------------------------
 # FUNCIONES EXPUESTAS A JAVASCRIPT (API DE EEL)
@@ -109,8 +133,8 @@ def api_load_project(filename):
     except Exception as e:
         return {'error': f"Error de lectura: {str(e)}"}
 
-@eel.expose
-def api_save_model_file(data, filename):
+#@eel.expose
+#*def api_save_model_file(data, filename):
     """
     Guarda la arquitectura del modelo ML (nodos/conexiones) 
     como archivo .edubotml en la carpeta 'models'.
@@ -271,8 +295,8 @@ def api_add_node_manually(node_data):
     return True
 
 # GESTIÓN DE ARCHIVOS GENÉRICOS
-@eel.expose
-def api_file_save(content, name, file_type="auto"):
+#@eel.expose
+#*def api_file_save(content, name, file_type="auto"):
     """
     Guarda archivos generados (ej. exportaciones a C, datasets).
     NOTA: El orden de argumentos se ajustó para coincidir con JS (content, name).
@@ -284,8 +308,8 @@ def api_file_save(content, name, file_type="auto"):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-@eel.expose
-def api_file_list():
+#@eel.expose
+#*def api_file_list():
     try:
         file_handler.ensure_dir_exist()
         
@@ -302,8 +326,8 @@ def api_file_list():
     except Exception as e:
         return {"error": str(e)}
 
-@eel.expose
-def api_load_dataset_data(name):
+#@eel.expose
+#*def api_load_dataset_data(name):
     """
     Conecta la UI con la capacidad de lectura híbrida (CSV/JSON).
     Permite a la interfaz previsualizar datos sin importar el formato origen.
@@ -318,8 +342,8 @@ def api_load_dataset_data(name):
         return {"success": False, "error": str(e)}
 
 # ESTIMACIÓN DE MEMORIA
-@eel.expose
-def api_estimate_memory_desktop(model_name):
+#@eel.expose
+#*def api_estimate_memory_desktop(model_name):
     try:
         entry = ml_manager._MODEL_REGISTRY.get(model_name)
         if not entry:
@@ -337,8 +361,8 @@ def api_estimate_memory_desktop(model_name):
         return {"error": str(e)}
 
 # EXPORTACIÓN A C
-@eel.expose
-def api_export_c_model(model_name):
+#@eel.expose
+#*def api_export_c_model(model_name):
     """
     Genera el código C/C++ para Arduino del modelo entrenado y lo guarda en disco.
     Incluye automáticamente cabeceras y guardas para Arduino Uno.
