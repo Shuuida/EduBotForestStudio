@@ -141,6 +141,12 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
         header = f"{indent}def {name}({args}):\n"
         return header + _generate_body(block.get('body', []), level + 1)
 
+    # Llamar funciones
+    if b_type == 'py_call':
+        func = _safe_str(block.get('func', 'metodo'))
+        args = _safe_str(block.get('args', ''))
+        return f"{indent}{func}({args})\n"
+
     # Clases
     if b_type == 'py_class':
         name = _safe_str(block.get('name', 'MiClase'))
@@ -148,6 +154,18 @@ def block_to_code(block: Dict[str, Any], level: int = 0) -> str:
         base_str = f"({bases})" if bases else ""
         header = f"{indent}class {name}{base_str}:\n"
         return header + _generate_body(block.get('body', []), level + 1)
+
+    # Constructor de Clase (__init__)
+    if b_type == 'py_init':
+        args = _safe_str(block.get('args', 'self'))
+        header = f"{indent}def __init__({args}):\n"
+        return header + _generate_body(block.get('body', []), level + 1)
+
+    # Atributo de Clase (self.algo = valor)
+    if b_type == 'py_self':
+        attr = _safe_str(block.get('attr', 'propiedad'))
+        val = _safe_str(block.get('value', 'None'))
+        return f"{indent}self.{attr} = {val}\n"
 
     # Try
     if b_type == 'py_try':
@@ -248,17 +266,44 @@ def _parse_body(stmts: List[ast.stmt]) -> List[Dict[str, Any]]:
             blocks.append(res)
     return blocks
 
+def _ast_args_to_str(args_node):
+    """
+    Extrae los nombres de los argumentos de un nodo ast.arguments 
+    y los convierte en un string separado por comas (ej: 'self, x, y').
+    """
+    if not args_node:
+        return ""
+        
+    # Extraemos el nombre (.arg) de cada argumento en la lista de argumentos del AST
+    arg_names = [arg.arg for arg in args_node.args]
+    
+    # Los unimos con una coma y un espacio
+    return ", ".join(arg_names)
+
 def ast_node_to_block(node: ast.AST) -> Dict[str, Any]:
     """Convierte un nodo AST en un diccionario de bloque."""
     
-    # Asignaciones
+    # Asignaciones (Variables, Atributos, Input, Conversiones, Math)
     if isinstance(node, ast.Assign):
+        # Detectar si es un Atributo de Clase (ej. self.nombre = ...)
+        if isinstance(node.targets[0], ast.Attribute):
+            target_attr = node.targets[0]
+            if isinstance(target_attr.value, ast.Name) and target_attr.value.id == 'self':
+                return {
+                    "type": "py_self",
+                    "attr": target_attr.attr,
+                    "value": _ast_expr_to_str(node.value)
+                }
+
+        # Extraemos el nombre de la variable receptora
         target = _ast_expr_to_str(node.targets[0])
+
         # Input
         if isinstance(node.value, ast.Call) and _ast_expr_to_str(node.value.func) == 'input':
             prompt = _ast_expr_to_str(node.value.args[0]) if node.value.args else '""'
             return {"type": "py_input", "target": target, "prompt": prompt}
 
+        # Castings (int, float)
         if isinstance(node.value, ast.Call):
             func_name = _ast_expr_to_str(node.value.func)
             if func_name in ['int', 'float']:
@@ -268,6 +313,7 @@ def ast_node_to_block(node: ast.AST) -> Dict[str, Any]:
                     "target": target, 
                     "value": arg_val
                 }
+
         # Math
         if isinstance(node.value, ast.BinOp):
             return {
@@ -277,6 +323,8 @@ def ast_node_to_block(node: ast.AST) -> Dict[str, Any]:
                 "op": _ast_op_to_str(node.value.op), 
                 "right": _ast_expr_to_str(node.value.right)
             }
+
+        # Variable Normal (Fallback)
         value = _ast_expr_to_str(node.value)
         return {"type": "py_var", "var_name": target, "value": value}
 
@@ -321,15 +369,26 @@ def ast_node_to_block(node: ast.AST) -> Dict[str, Any]:
             "body": _parse_body(node.body)
         }
 
-    # Funciones y Clases (Recursivo)
+    # Funciones y Constructores
     if isinstance(node, ast.FunctionDef):
-        args = ", ".join([a.arg for a in node.args.args])
-        return {
-            "type": "py_func", 
-            "func_name": node.name, 
-            "args": args,
-            "body": _parse_body(node.body)
-        }
+        args_str = _ast_args_to_str(node.args)
+        
+        # Detectar si es el constructor
+        if node.name == '__init__':
+            return {
+                "type": "py_init",
+                "args": args_str,
+                "body": _parse_body(node.body)
+            }
+        else:
+            return {
+                "type": "py_func",
+                "func_name": node.name,
+                "args": args_str,
+                "body": _parse_body(node.body)
+            }
+
+    # Clases
     if isinstance(node, ast.ClassDef):
         bases = ", ".join([_ast_expr_to_str(b) for b in node.bases])
         return {
@@ -368,14 +427,21 @@ def ast_node_to_block(node: ast.AST) -> Dict[str, Any]:
             
         return blocks
 
-    # Expresiones
+    # Expresiones (Print o Llamadas a Funciones sueltas)
     if isinstance(node, ast.Expr):
         if isinstance(node.value, ast.Call):
             func = _ast_expr_to_str(node.value.func)
             args = [_ast_expr_to_str(a) for a in node.value.args]
+            
             if func == 'print': 
-                return {"type": "py_print", "content": args[0] if args else ""}
-            return {"type": "call", "func": func, "args": args}
+                # Unimos los argumentos con coma por si hacen print(a, b)
+                return {"type": "py_print", "content": ", ".join(args) if args else ""}
+                
+            return {
+                "type": "py_call", 
+                "func": func, 
+                "args": ", ".join(args)
+            }
 
     if isinstance(node, ast.Return):
         return {"type": "py_return", "value": _ast_expr_to_str(node.value) if node.value else ""}

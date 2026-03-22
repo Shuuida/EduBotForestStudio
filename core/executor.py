@@ -78,6 +78,10 @@ def sanitize_code(code: str) -> str:
 def execute_user_code(code: str, timeout: int = 5) -> Dict[str, Any]:
     global is_waiting_for_user
     result = {'success': False, 'output': '', 'error': ''}
+
+    print("\n[DEBUG] CÓDIGO ENVIADO AL SANDBOX:")
+    print(code)
+    print("----------------------------------\n")
     
     # Limpiar cualquier residuo de inputs de ejecuciones pasadas
     while not input_queue.empty():

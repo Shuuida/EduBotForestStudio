@@ -203,7 +203,7 @@
             }
 
             // DETECCIÓN DE SCOPE
-            const CONTAINER_TYPES = ['py_class', 'py_func', 'py_if', 'py_elif', 'py_else', 'py_loop', 'py_while', 'py_try', 'py_except'];
+            const CONTAINER_TYPES = ['py_class', 'py_func', 'py_init', 'py_if', 'py_elif', 'py_else', 'py_loop', 'py_while', 'py_try', 'py_except'];
             const parentMap = new Map(); 
             sortedIds.forEach(id => parentMap.set(id, null));
 
@@ -468,15 +468,18 @@
             py_math: ({ data, id }) => <BaseNode title="Math (Operaciones)" icon={Calculator} color="bg-teal-600"><div className="flex gap-1"><input name="left" className="node-input nodrag w-1/3" value={data.left||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><select name="op" className="node-input nodrag w-1/4 p-0 text-center" value={data.op||'+'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option>+</option><option>-</option><option>*</option><option>/</option></select><input name="right" className="node-input nodrag w-1/3" value={data.right||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div className="mt-1 flex items-center gap-1"><span className="text-xs">Save:</span><input name="target" placeholder="res" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
             py_compare: ({ data, id }) => <BaseNode title="Compare (Comparar)" icon={CheckSquare} color="bg-cyan-700"><div className="flex gap-1"><input name="left" className="node-input nodrag w-1/3" value={data.left||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><select name="op" className="node-input nodrag w-1/4 p-0 text-center" value={data.op||'=='} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option>==</option><option>&gt;</option><option>&lt;</option></select><input name="right" className="node-input nodrag w-1/3" value={data.right||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
             py_func: ({ data, id }) => <BaseNode title="Function (Funcion)" icon={FunctionSquare} color="bg-violet-600"><input name="func_name" placeholder="name" className="node-input nodrag mb-1" value={data.func_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="args" placeholder="args" className="node-input nodrag" value={data.args||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_call: ({ data, id }) => <BaseNode title="Llamar Función/Método" icon={Play} color="bg-rose-600"><div className="flex items-center gap-1 mb-1"><input name="func" placeholder="obj.metodo" className="node-input nodrag w-24" value={data.func !== undefined ? data.func : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-mono text-xs text-rose-200">(</span><input name="args" placeholder="args..." className="node-input nodrag w-16" value={data.args !== undefined ? data.args : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-mono text-xs text-rose-200">)</span></div></BaseNode>,
             py_return: ({ data, id }) => <BaseNode title="Return (Retornar)" icon={ArrowLeft} color="bg-rose-600"><input name="value" placeholder="val" className="node-input nodrag" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
             py_control: ({ data, id }) => <BaseNode title="Control" icon={XCircle} color="bg-red-800"><select name="control_type" className="node-input nodrag" value={data.control_type||'break'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="break">Break</option><option value="continue">Continue</option><option value="pass">Pass</option></select></BaseNode>,
             py_input: ({ data, id }) => <BaseNode title="Input (Escribir)" icon={Keyboard} color="bg-slate-600"><input name="prompt" placeholder="msg" className="node-input nodrag mb-1" value={data.prompt||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="target" placeholder="var" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
             py_int: ({ data, id }) => <BaseNode title="To Integer (Enteros)" icon={Code} color="bg-pink-700"><div className="flex gap-1 items-center mb-1"><span className="text-xs font-mono">int(</span><input name="value" placeholder="var" className="node-input nodrag w-16" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="text-xs font-mono">)</span></div><div className="flex items-center gap-1"><span className="text-xs">Save:</span><input name="target" placeholder="res" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
             py_float: ({ data, id }) => <BaseNode title="To Decimal (Decimales)" icon={Code} color="bg-pink-600"><div className="flex gap-1 items-center mb-1"><span className="text-xs font-mono">float(</span><input name="value" placeholder="var" className="node-input nodrag w-16" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="text-xs font-mono">)</span></div><div className="flex items-center gap-1"><span className="text-xs">Save:</span><input name="target" placeholder="res" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
             py_class: ({ data, id }) => <BaseNode title="Class (Clases)" icon={Box} color="bg-indigo-700"><input name="name" placeholder="Name" className="node-input nodrag mb-1" value={data.name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="bases" placeholder="Inherits" className="node-input nodrag" value={data.bases||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_init: ({ data, id }) => <BaseNode title="Constructor (__init__)" icon={FunctionSquare} color="bg-indigo-600"><div className="flex gap-1 items-center mb-1"><span className="text-xs font-mono">def __init__(</span><input name="args" placeholder="self" className="node-input nodrag w-16" value={data.args !== undefined ? data.args : 'self'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="text-xs font-mono">):</span></div><div className="text-[10px] text-gray-300 mt-1">Conectar a derecha</div></BaseNode>,
+            py_self: ({ data, id }) => <BaseNode title="Atributo (self)" icon={Box} color="bg-indigo-500"><div className="flex items-center gap-1 mb-1"><span className="font-mono text-xs font-bold text-indigo-200">self.</span><input name="attr" placeholder="nombre" className="node-input nodrag w-20" value={data.attr !== undefined ? data.attr : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-bold text-white">=</span><input name="value" placeholder="val" className="node-input nodrag w-20" value={data.value !== undefined ? data.value : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
             py_import: ({ data, id }) => <BaseNode title="Import (Importar)" icon={Package} color="bg-sky-700"><div className="flex gap-1 mb-1"><span className="text-xs">from</span><input name="from" className="node-input nodrag" value={data.from||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div className="flex gap-1"><span className="text-xs">import</span><input name="names" className="node-input nodrag" value={data.names||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
             py_try: ({ data, id }) => <BaseNode title="Try (Intentar)" icon={AlertTriangle} color="bg-amber-600"><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
-            py_except: ({ data, id }) => <BaseNode title="Except (En caso de Error)" icon={AlertTriangle} color="bg-amber-700"><input name="error_type" placeholder="Exception as e" className="node-input nodrag mb-1" value={data.error_type||'Exception as e'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
+            py_except: ({ data, id }) => <BaseNode title="Except (Error)" icon={AlertTriangle} color="bg-amber-700"><input name="error_type" placeholder="Exception as e" className="node-input nodrag mb-1" value={data.error_type !== undefined ? data.error_type : 'Exception as e'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
         };
 
         // COMPONENTE MODAL PERSONALIZADO
@@ -1202,30 +1205,41 @@
                     </div>
                     <div className="flex-1 flex overflow-hidden">
                         <div className="w-64 bg-gray-900 border-r border-gray-700 flex flex-col shrink-0">
-                            <div className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-800">Bloques Python</div>
-                            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                            <div className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-800">Catálogo de Nodos</div>
+                            <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                                
+                                <div className="text-[10px] font-bold text-gray-500 uppercase mt-2 mb-1 px-2">Datos y Entradas</div>
                                 <SidebarBtn label="Variable" icon={Variable} color="text-yellow-400" nodeType="py_var" onDragStart={onDragStart} />
                                 <SidebarBtn label="Input (Escribir)" icon={Keyboard} color="text-slate-400" nodeType="py_input" onDragStart={onDragStart} />
+                                <SidebarBtn label="Print (Imprimir)" icon={Terminal} color="text-gray-400" nodeType="py_print" onDragStart={onDragStart} />
                                 <SidebarBtn label="To Int (Entero)" icon={Code} color="text-pink-500" nodeType="py_int" onDragStart={onDragStart} />
                                 <SidebarBtn label="To Float (Decimal)" icon={Code} color="text-pink-400" nodeType="py_float" onDragStart={onDragStart} />
-                                <SidebarBtn label="Print (Imprimir)" icon={Terminal} color="text-gray-400" nodeType="py_print" onDragStart={onDragStart} />
-                                <div className="my-2 border-t border-gray-800"></div>
+
+                                <div className="text-[10px] font-bold text-gray-500 uppercase mt-4 mb-1 px-2">Matemáticas y Lógica</div>
+                                <SidebarBtn label="Math" icon={Calculator} color="text-teal-400" nodeType="py_math" onDragStart={onDragStart} />
+                                <SidebarBtn label="Compare" icon={CheckSquare} color="text-cyan-400" nodeType="py_compare" onDragStart={onDragStart} />
+
+                                <div className="text-[10px] font-bold text-gray-500 uppercase mt-4 mb-1 px-2">Control de Flujo</div>
                                 <SidebarBtn label="If (Si)" icon={Split} color="text-orange-400" nodeType="py_if" onDragStart={onDragStart} />
-                                <SidebarBtn label="Elif (Tambien)" icon={Split} color="text-orange-500" nodeType="py_elif" onDragStart={onDragStart} />
+                                <SidebarBtn label="Elif (Sino Si)" icon={Split} color="text-orange-500" nodeType="py_elif" onDragStart={onDragStart} />
                                 <SidebarBtn label="Else (Sino)" icon={Split} color="text-red-500" nodeType="py_else" onDragStart={onDragStart} />
                                 <SidebarBtn label="For (Por 'x' en tal Rango)" icon={Repeat} color="text-orange-500" nodeType="py_loop" onDragStart={onDragStart} />
                                 <SidebarBtn label="While (Mientras)" icon={RefreshCw} color="text-orange-600" nodeType="py_while" onDragStart={onDragStart} />
-                                <SidebarBtn label="Control" icon={XCircle} color="text-red-500" nodeType="py_control" onDragStart={onDragStart} />
-                                <div className="my-2 border-t border-gray-800"></div>
-                                <SidebarBtn label="Math (Operaciones)" icon={Calculator} color="text-teal-400" nodeType="py_math" onDragStart={onDragStart} />
-                                <SidebarBtn label="Compare (Comparar)" icon={CheckSquare} color="text-cyan-400" nodeType="py_compare" onDragStart={onDragStart} />
-                                <SidebarBtn label="Function (Funcion)" icon={FunctionSquare} color="text-violet-400" nodeType="py_func" onDragStart={onDragStart} />
-                                <SidebarBtn label="Return (Retornar)" icon={ArrowLeft} color="text-rose-400" nodeType="py_return" onDragStart={onDragStart} />
-                                <div className="my-2 border-t border-gray-800"></div>
+                                <SidebarBtn label="Control (Break/Pass)" icon={XCircle} color="text-red-500" nodeType="py_control" onDragStart={onDragStart} />
+                                
+                                <div className="text-[10px] font-bold text-gray-500 uppercase mt-4 mb-1 px-2">Objetos y Funciones</div>
                                 <SidebarBtn label="Class (Clases)" icon={Box} color="text-indigo-400" nodeType="py_class" onDragStart={onDragStart} />
-                                <SidebarBtn label="Import (Importar)" icon={Package} color="text-sky-400" nodeType="py_import" onDragStart={onDragStart} />
+                                <SidebarBtn label="Constructor (__init__)" icon={FunctionSquare} color="text-indigo-500" nodeType="py_init" onDragStart={onDragStart} />
+                                <SidebarBtn label="Atributo (self.)" icon={Box} color="text-indigo-300" nodeType="py_self" onDragStart={onDragStart} />
+                                <SidebarBtn label="Function (Funciones)" icon={FunctionSquare} color="text-violet-400" nodeType="py_func" onDragStart={onDragStart} />
+                                <SidebarBtn label="Return (Retornar)" icon={ArrowLeft} color="text-rose-400" nodeType="py_return" onDragStart={onDragStart} />
+                                <SidebarBtn label="Llamar Método (Call)" icon={Play} color="text-rose-500" nodeType="py_call" onDragStart={onDragStart} />
+
+                                <div className="text-[10px] font-bold text-gray-500 uppercase mt-4 mb-1 px-2">Avanzado</div>
                                 <SidebarBtn label="Try (Intentar)" icon={AlertTriangle} color="text-amber-400" nodeType="py_try" onDragStart={onDragStart} />
-                                <SidebarBtn label="Except (En caso de Error)" icon={AlertTriangle} color="text-amber-500" nodeType="py_except" onDragStart={onDragStart} />
+                                <SidebarBtn label="Except (Manejar Error)" icon={AlertTriangle} color="text-amber-500" nodeType="py_except" onDragStart={onDragStart} />
+                                <SidebarBtn label="Import (Importar)" icon={Package} color="text-sky-400" nodeType="py_import" onDragStart={onDragStart} />
+                                <div className="pb-4"></div>
                             </div>
                         </div>
                         <div className="flex-1 relative bg-[#1e1e1e]" ref={reactFlowWrapper}>

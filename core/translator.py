@@ -76,10 +76,12 @@ class Translator:
     def _inject_auto_runner(self, blocks: List[Dict]) -> str:
         """
         Genera el bloque if __name__ == "__main__": 
-        Ejecuta TODAS las clases y funciones huérfanas encontradas, 
-        respetando el orden visual del lienzo.
+        Ejecuta TODAS las clases y funciones huérfanas encontradas.
+        Atrapa errores de instanciación (como falta de argumentos en __init__) 
+        sin alertar ni confundir al estudiante.
         """
-        runner_code = "\nif __name__ == '__main__':\n"
+        runner_code = "\n# --- Auto-Runner (Inferencias) ---\n"
+        runner_code += "if __name__ == '__main__':\n"
         has_executable = False
 
         # Recorremos los bloques en el orden estricto que dictó el Frontend
@@ -95,7 +97,7 @@ class Translator:
                 methods = [b for b in body if b.get('type') == 'py_func']
                 
                 runner_code += f"    try:\n"
-                runner_code += f"        # Instancia de la clase {cls_name}\n"
+                runner_code += f"        # Instancia de prueba para {cls_name}\n"
                 runner_code += f"        _{cls_name}_inst = {cls_name}()\n"
                 
                 if methods:
@@ -105,13 +107,11 @@ class Translator:
                         if m_name != '__init__':
                             runner_code += f"        try:\n"
                             runner_code += f"            _{cls_name}_inst.{m_name}()\n"
-                            runner_code += f"        except TypeError:\n"
-                            runner_code += f"            _{cls_name}_inst.{m_name}(0) # Reintento con dummy\n"
-                else:
-                    runner_code += f"        print('Clase {cls_name} instanciada correctamente.')\n"
+                            runner_code += f"        except:\n"
+                            runner_code += f"            pass # Falla silenciosa en método\n"
                 
-                runner_code += f"    except Exception as e:\n"
-                runner_code += f"        print(f'Error en clase {cls_name}: {{e}}')\n"
+                runner_code += f"    except:\n"
+                runner_code += f"        pass # Falla silenciosa al instanciar (ej. requiere argumentos)\n"
                 has_executable = True
 
             # DETECCIÓN DE FUNCIÓN SUELTA
@@ -119,10 +119,8 @@ class Translator:
                 func_name = block.get('func_name', 'main')
                 runner_code += f"    try:\n"
                 runner_code += f"        {func_name}()\n"
-                runner_code += f"    except TypeError:\n"
-                runner_code += f"        {func_name}(0)\n"
-                runner_code += f"    except Exception as e:\n"
-                runner_code += f"        print(f'Error ejecutando función {func_name}: {{e}}')\n"
+                runner_code += f"    except:\n"
+                runner_code += f"        pass # Falla silenciosa en función\n"
                 has_executable = True
 
         if not has_executable:
