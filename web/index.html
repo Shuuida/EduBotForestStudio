@@ -938,6 +938,7 @@
             const [isWaitingInput, setIsWaitingInput] = useState(false);
             const [terminalInput, setTerminalInput] = useState('');
             const codeRef = useRef(null);
+            const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
             
             const reactFlowWrapper = useRef(null);
             const [prefs, setPrefs] = useState({
@@ -1002,10 +1003,12 @@
             
             const onConnect = useCallback((params) => {
                 setEdges((eds) => addEdge({ ...params, type: 'smart', animated: false, data: { status: 'idle' } }, eds));
+                setHasUnsavedChanges(true);
             }, [setEdges]);
             
             const onNodeDataChange = (id, newData) => {
                 setNodes((nds) => nds.map((node) => node.id === id ? { ...node, data: newData } : node));
+                setHasUnsavedChanges(true);
             };
 
             useEffect(() => {
@@ -1032,6 +1035,7 @@
                 const newNode = { id: `${type}_${Date.now()}`, type, position, data: { label, onChange: onNodeDataChange } };
                 setNodes((nds) => nds.concat(newNode));
                 addLog(`Nodo: ${label}`);
+                setHasUnsavedChanges(true);
             }, [reactFlowInstance]);
 
             const onDragStart = (event, nodeType, label) => {
@@ -1046,6 +1050,7 @@
                 setNodes(nds => nds.filter(n => !n.selected));
                 setEdges(eds => eds.filter(e => !selected.some(n => n.id === e.source || n.id === e.target)));
                 addLog(`Eliminados ${selected.length} nodos`, 'warn');
+                setHasUnsavedChanges(true);
             };
 
             const translateToCode = async () => {
@@ -1086,6 +1091,47 @@
 
             const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
 
+            const handleExitAttempt = () => {
+                if (hasUnsavedChanges) {
+                    setModalConfig({
+                        isOpen: true, 
+                        type: 'confirm', 
+                        title: '⚠️ Cambios sin guardar',
+                        message: 'Tienes modificaciones recientes. Si sales ahora perderás el progreso no guardado. ¿Deseas salir de todos modos?',
+                        onConfirm: () => {
+                            closeModal();
+                            setHasUnsavedChanges(false);
+                            onBack(); // Sale al inicio
+                        },
+                        onCancel: closeModal
+                    });
+                } else {
+                    onBack(); // Sale directo si todo está guardado
+                }
+            };
+
+            const exportToPythonFile = () => {
+                if (!pythonCode || pythonCode.includes("El código generado aparecerá aquí")) {
+                    addLog("No hay código Python generado para exportar. Presiona la pestaña 'Código Python' primero.", "warn");
+                    return;
+                }
+                
+                // Creamos un Blob (archivo en memoria) con el texto del código
+                const blob = new Blob([pythonCode], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                
+                // Forzamos la descarga nativa del navegador
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = currentName ? `${currentName}_export.py` : 'script_edubot.py';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                
+                addLog("Archivo .py exportado exitosamente.", "success");
+            };
+
             const saveProject = async () => {
                 const performSave = async (name) => {
                     closeModal();
@@ -1096,7 +1142,8 @@
                         const res = await window.eel.api_save_project(data, name)(); 
                         if (res.success) {
                             addLog(`Proyecto guardado: ${name}.edubotproj`, 'success'); 
-                            setCurrentName(name); 
+                            setCurrentName(name);
+                            setHasUnsavedChanges(false);
                         } else { 
                             addLog(`Error guardando: ${res.error}`, 'error'); 
                         }
@@ -1183,8 +1230,14 @@
                     {showTutorial && <TutorialOverlay onComplete={finishTutorial} />}
                     <div className="h-14 bg-gray-900 border-b border-gray-700 flex items-center px-4 justify-between shrink-0">
                         <div className="flex items-center gap-4">
-                            <button onClick={onBack} className="text-gray-400 hover:text-white flex items-center gap-1 text-sm font-bold"><ArrowLeft size={16}/> Inicio</button>
-                            <div className="text-xs text-gray-500 font-mono"> {currentName ? `Archivo: ${currentName}.edubotproj` : '• Sin Guardar'}</div>
+                            <button onClick={handleExitAttempt} className="text-gray-400 hover:text-white flex items-center gap-1 text-sm font-bold transition-colors"><ArrowLeft size={16}/> Inicio</button>
+                            {/* Nuevo diseño del semáforo de estado */}
+                            <div className="text-xs text-gray-400 font-mono flex items-center gap-2 bg-gray-800/50 px-2 py-1 rounded border border-gray-700"> 
+                                <span className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${hasUnsavedChanges ? 'bg-yellow-400 shadow-[0_0_6px_rgba(250,204,21,0.6)]' : 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]'}`} title={hasUnsavedChanges ? "Cambios sin guardar" : "Todo guardado"}></span>
+                                {currentName ? `${currentName}.edubotproj` : 'Proyecto Nuevo'} 
+                                {hasUnsavedChanges && <span className="text-yellow-400 font-bold ml-1">*</span>}
+                            </div>
+                            
                             <div className="h-6 w-px bg-gray-700"></div>
                             <div className="flex bg-gray-800 rounded p-1">
                                 <button onClick={() => setActiveTab('forest')} className={`px-3 py-1 rounded text-xs font-medium ${activeTab==='forest'?'bg-gray-600 text-white':'text-gray-400'}`}>Bosque Visual</button>
@@ -1195,6 +1248,7 @@
                             <button onClick={deleteSelected} title="Borrar un nodo del lienzo" className="p-2 rounded hover:bg-red-900/30 text-red-400"><Trash2 size={18}/></button>
                             <button onClick={saveProject} title="Guardar el avance del proyecto" className="p-2 rounded hover:bg-blue-900/30 text-blue-400"><Save size={18}/></button>
                             <button onClick={trashProject} title="Mover Proyecto a Papelera" className="p-2 rounded hover:bg-red-900/40 text-red-500 transition-colors border border-transparent hover:border-red-500/50"><FileWarning size={18}/></button>
+                            <button onClick={exportToPythonFile} title="Exportar como archivo .py" className="p-2 rounded hover:bg-emerald-900/40 text-emerald-400 transition-colors border border-transparent hover:border-emerald-500/50"><Code size={18}/></button>
                             <div className="h-6 w-px bg-gray-700 mx-1"></div>
                             <StudentAuth onOpenTeacherDashboard={() => setShowTeacherDashboard(true)} />
                             <div className="h-6 w-px bg-gray-700 mx-1"></div>
