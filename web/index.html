@@ -529,7 +529,7 @@
             const isValidName = (name) => /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(name);
             const isValidTeacherUser = (user) => /^(?=.*[a-zA-Z])[a-zA-Z0-9._-]{3,15}$/.test(user);
             const isValidStudentUser = (user) => /^(?=.*[a-zA-Z])[a-zA-Z0-9]{3,8}$/.test(user);
-            const isValidPassword = (pwd) => pwd.length >= 7;
+            const isValidPassword = (pwd) => pwd.length >= 8;
 
             const handleRoleSelect = (role) => {
                 setViewState(role === 'student' ? 'login_student' : 'login_teacher');
@@ -581,7 +581,7 @@
                     return; 
                 }
                 if (!isValidPassword(inputPwd)) { 
-                    setError("La contraseña debe tener al menos 7 caracteres."); 
+                    setError("La contraseña debe tener al menos 8 caracteres."); 
                     return; 
                 }
 
@@ -616,7 +616,7 @@
 
             const performResetPassword = async (isTeacher) => {
                 if (!inputUser.trim() || !inputName.trim() || !inputPwd.trim()) { setError("Todos los campos son requeridos"); return; }
-                if (!isValidPassword(inputPwd)) { setError("La nueva contraseña debe tener al menos 7 caracteres."); return; }
+                if (!isValidPassword(inputPwd)) { setError("La nueva contraseña debe tener al menos 8 caracteres."); return; }
                 
                 setLoading(true);
                 try {
@@ -695,7 +695,7 @@
                                 <input type="text" className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white outline-none focus:border-blue-500" placeholder={isTeacher ? "Ej: pedro.prof" : "Ej: juan123"} value={inputUser} onChange={(e) => setInputUser(e.target.value)} />
                             </div>
                             <div>
-                                <label className="block text-xs text-gray-400 mb-1">Contraseña (Mínimo 7 caracteres)</label>
+                                <label className="block text-xs text-gray-400 mb-1">Contraseña (Mínimo 8 caracteres)</label>
                                 <input type="password" className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white outline-none focus:border-blue-500" placeholder="••••••" value={inputPwd} onChange={(e) => setInputPwd(e.target.value)} />
                             </div>
                             {error && <div className="text-red-400 text-xs bg-red-900/20 p-2 rounded border border-red-900/50">{error}</div>}
@@ -752,7 +752,7 @@
                             
                             <input type="text" className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white outline-none focus:border-blue-500 mb-2" placeholder="Usuario" value={inputUser} onChange={(e) => setInputUser(e.target.value)} />
                             <input type="text" className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white outline-none focus:border-blue-500 mb-2" placeholder="Nombre Completo Exacto" value={inputName} onChange={(e) => setInputName(e.target.value)} />
-                            <input type="password" className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white outline-none focus:border-blue-500" placeholder="Nueva Contraseña (Mín 7)" value={inputPwd} onChange={(e) => setInputPwd(e.target.value)} />
+                            <input type="password" className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white outline-none focus:border-blue-500" placeholder="Nueva Contraseña (Mín 8)" value={inputPwd} onChange={(e) => setInputPwd(e.target.value)} />
                             
                             {error && <div className="text-red-400 text-xs bg-red-900/20 p-2 rounded border border-red-900/50">{error}</div>}
                             <button onClick={() => performResetPassword(isTeacher)} disabled={loading} className={`w-full py-2 mt-2 rounded-lg font-bold shadow-lg bg-orange-600 hover:bg-orange-500 text-white shadow-orange-500/20 ${loading ? 'opacity-50' : ''}`}>{loading ? 'Procesando...' : 'Restaurar Contraseña'}</button>
@@ -892,8 +892,8 @@
 
             // EXPRESIONES REGULARES DE SEGURIDAD
             const isValidName = (name) => /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(name);
-            const isValidTeacherUser = (user) => /^(?=.*[a-zA-Z])[a-zA-Z0-9._-]{2,15}$/.test(user);
-            const isValidStudentUser = (user) => /^(?=.*[a-zA-Z])[a-zA-Z0-9]{2,8}$/.test(user);
+            const isValidTeacherUser = (user) => /^(?=.*[a-zA-Z])[a-zA-Z0-9._-]{3,15}$/.test(user);
+            const isValidStudentUser = (user) => /^(?=.*[a-zA-Z])[a-zA-Z0-9]{3,8}$/.test(user);
 
             useEffect(() => {
                 if (isOpen) {
@@ -946,7 +946,7 @@
             // LÓGICA DE SEGURIDAD Y ADMIN
             const handleChangePassword = async () => {
                 if (!oldPwd || !newPwd) return;
-                if (newPwd.length < 7) { showModal({ type: 'alert', title: 'Error', message: 'La nueva contraseña debe tener al menos 7 caracteres.', onConfirm: closeModal }); return; }
+                if (newPwd.length < 8) { showModal({ type: 'alert', title: 'Error', message: 'La nueva contraseña debe tener al menos 8 caracteres.', onConfirm: closeModal }); return; }
                 setLoadingPwd(true);
                 try {
                     const res = await window.eel.api_change_password(currentUsername, oldPwd, newPwd, userRole)();
@@ -997,7 +997,7 @@
                 if (!isValidName(name)) { showModal({ type: 'alert', title: 'Error', message: 'Nombre inválido.', onConfirm: closeModal }); return; }
                 if (editingAccount.role === 'teacher' && !isValidTeacherUser(username)) { showModal({ type: 'alert', title: 'Error', message: 'Usuario de profesor inválido.', onConfirm: closeModal }); return; }
                 if (editingAccount.role === 'student' && !isValidStudentUser(username)) { showModal({ type: 'alert', title: 'Error', message: 'Usuario de estudiante inválido.', onConfirm: closeModal }); return; }
-                if (password && password.length < 7) { showModal({ type: 'alert', title: 'Error', message: 'La contraseña debe tener al menos 7 caracteres.', onConfirm: closeModal }); return; }
+                if (password && password.length < 8) { showModal({ type: 'alert', title: 'Error', message: 'La contraseña debe tener al menos 8 caracteres.', onConfirm: closeModal }); return; }
 
                 const res = await window.eel.api_edit_account(editingAccount.old_username, username, name, password, editingAccount.role)();
                 if (res.success) {
@@ -1012,7 +1012,7 @@
                 if (!name || !username || !password) { showModal({ type: 'alert', title: 'Error', message: 'Todos los campos son obligatorios.', onConfirm: closeModal }); return; }
                 if (!isValidName(name)) { showModal({ type: 'alert', title: 'Error', message: 'Nombre inválido.', onConfirm: closeModal }); return; }
                 if (!isValidStudentUser(username)) { showModal({ type: 'alert', title: 'Error', message: 'Usuario de estudiante inválido.', onConfirm: closeModal }); return; }
-                if (password.length < 7) { showModal({ type: 'alert', title: 'Error', message: 'La contraseña debe tener al menos 7 caracteres.', onConfirm: closeModal }); return; }
+                if (password.length < 8) { showModal({ type: 'alert', title: 'Error', message: 'La contraseña debe tener al menos 8 caracteres.', onConfirm: closeModal }); return; }
 
                 const res = await window.eel.api_create_student(username, password, name)();
                 if (res.success) {
