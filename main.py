@@ -15,6 +15,7 @@ import platform
 import shutil
 import json
 #import yaml
+import webbrowser
 import hashlib
 from datetime import datetime
 from cryptography.fernet import Fernet
@@ -427,6 +428,28 @@ def api_add_node_manually(node_data):
     except Exception as e:
         return {"success": False, "error": f"Error interno exportando: {str(e)}"}
 
+@eel.expose
+def api_open_manual():
+    """Busca y abre el manual de usuario en PDF con el visor predeterminado del sistema."""
+    try:
+        # Busca el archivo en la raíz del proyecto
+        manual_path = os.path.abspath(os.path.join(file_handler.BASE_PATH, "Manual de Usuario EduBot.pdf"))
+        
+        # Buscar dentro de la carpeta 'docs'
+        if not os.path.exists(manual_path):
+            manual_path = os.path.abspath(os.path.join(file_handler.BASE_PATH, "docs", "user", "Manual de Usuario EduBot.pdf"))
+            
+        if not os.path.exists(manual_path):
+            return {'success': False, 'error': 'No se encontró el archivo manual_usuario.pdf en el directorio de instalación.'}
+        
+        # Convertir la ruta a formato URI seguro para todos los sistemas operativos
+        file_url = f"file:///{manual_path.replace(chr(92), '/')}"
+        webbrowser.open(file_url)
+        
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
 # ------------------------------------
 # MÓDULO DE SEGURIDAD Y AUTENTICACIÓN
 # ------------------------------------
@@ -509,43 +532,9 @@ def api_check_admin_access(password):
         return {'success': False, 'error': str(e)}
 
 @eel.expose
-def api_get_users():
-    """Obtiene lista de profesores para el panel de admin"""
+def api_create_student(username, password, name):
+    """Crea un nuevo perfil de estudiante con contraseña en students.json"""
     try:
-        _ensure_users_db_exists()
-        with open(USERS_FILE, 'r', encoding='utf-8') as f:
-            users = json.load(f)
-        # Retornamos solo datos seguros
-        return {'success': True, 'users': [{'username': u['username'], 'name': u.get('name', 'Sin Nombre')} for u in users]}
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
-@eel.expose
-def api_delete_user(username):
-    """Elimina un usuario profesor"""
-    try:
-        _ensure_users_db_exists()
-        with open(USERS_FILE, 'r', encoding='utf-8') as f:
-            users = json.load(f)
-        
-        new_users = [u for u in users if u.get('username') != username]
-        
-        with open(USERS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(new_users, f, indent=4)
-        return {'success': True}
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
-@eel.expose
-def api_login_student(name):
-    """
-    Registra el inicio de sesión de un estudiante.
-    """
-    try:
-        if not name or len(name.strip()) < 1:
-            return {'success': False, 'error': 'El nombre no puede estar vacío'}
-        
-        # Asegurar existencia de DB y archivo de estudiantes
         if not os.path.exists(DB_FOLDER):
             os.makedirs(DB_FOLDER)
         if not os.path.exists(STUDENTS_FILE):
@@ -555,23 +544,170 @@ def api_login_student(name):
         with open(STUDENTS_FILE, 'r', encoding='utf-8') as f:
             students = json.load(f)
 
-        # Registrar o actualizar estudiante
+        # Validar duplicados
+        if any(s.get('username') == username for s in students):
+            return {'success': False, 'error': 'El nombre de usuario ya existe.'}
+
+        new_hash = hashlib.sha256(password.encode()).hexdigest()
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        found = False
-        for s in students:
-            if s.get('name') == name:
-                s['last_login'] = now
-                found = True
-                break
-        
-        if not found:
-            students.append({'name': name, 'first_login': now, 'last_login': now})
-            
+
+        students.append({
+            "username": username,
+            "password_hash": new_hash,
+            "name": name,
+            "first_login": now,
+            "last_login": now
+        })
+
         with open(STUDENTS_FILE, 'w', encoding='utf-8') as f:
             json.dump(students, f, indent=4)
 
-        print(f"[AUTH] Estudiante conectado: {name}")
-        return {'success': True, 'role': 'student', 'name': name}
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_login_student(username, password):
+    """Valida el acceso del estudiante usando usuario y contraseña cifrada"""
+    try:
+        if not os.path.exists(DB_FOLDER) or not os.path.exists(STUDENTS_FILE):
+            return {'success': False, 'error': 'No hay estudiantes registrados en el sistema.'}
+
+        with open(STUDENTS_FILE, 'r', encoding='utf-8') as f:
+            students = json.load(f)
+
+        input_hash = hashlib.sha256(password.encode()).hexdigest()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        for s in students:
+            if s.get('username') == username and s.get('password_hash') == input_hash:
+                s['last_login'] = now # Actualizamos su última conexión
+                with open(STUDENTS_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(students, f, indent=4)
+                
+                print(f"[AUTH] Estudiante conectado: {s.get('name')}")
+                # Devolvemos 'name' para no romper el sistema de calificaciones actual
+                return {'success': True, 'role': 'student', 'name': s.get('name')}
+
+        return {'success': False, 'error': 'Usuario o contraseña incorrectos'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_change_password(username, old_password, new_password, role):
+    """Permite cambiar la contraseña desde adentro de la app si conoces la actual."""
+    try:
+        file_path = USERS_FILE if role == 'teacher' else STUDENTS_FILE
+        if not os.path.exists(file_path): 
+            return {'success': False, 'error': 'Base de datos no encontrada.'}
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            users = json.load(f)
+            
+        old_hash = hashlib.sha256(old_password.encode()).hexdigest()
+        new_hash = hashlib.sha256(new_password.encode()).hexdigest()
+        
+        for u in users:
+            if u.get('username') == username and u.get('password_hash') == old_hash:
+                u['password_hash'] = new_hash
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(users, f, indent=4)
+                return {'success': True}
+                
+        return {'success': False, 'error': 'La contraseña actual es incorrecta.'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_reset_password(username, full_name, new_password, role):
+    """Permite recuperar la contraseña si conoces tu Usuario y tu Nombre Completo exacto."""
+    try:
+        file_path = USERS_FILE if role == 'teacher' else STUDENTS_FILE
+        if not os.path.exists(file_path): 
+            return {'success': False, 'error': 'Base de datos no encontrada.'}
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            users = json.load(f)
+            
+        new_hash = hashlib.sha256(new_password.encode()).hexdigest()
+        
+        for u in users:
+            # Verificación de seguridad básica para entornos offline: Coincidencia de Usuario + Nombre
+            if u.get('username') == username and u.get('name').lower() == full_name.lower():
+                u['password_hash'] = new_hash
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(users, f, indent=4)
+                return {'success': True}
+                
+        return {'success': False, 'error': 'Los datos no coinciden con ninguna cuenta registrada.'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_get_all_accounts():
+    """Obtiene todos los profesores y estudiantes para el panel de administración interna."""
+    try:
+        teachers = []
+        students = []
+        if os.path.exists(USERS_FILE):
+            with open(USERS_FILE, 'r', encoding='utf-8') as f:
+                t_data = json.load(f)
+                teachers = [{'username': u['username'], 'name': u.get('name', 'Sin Nombre')} for u in t_data]
+        if os.path.exists(STUDENTS_FILE):
+            with open(STUDENTS_FILE, 'r', encoding='utf-8') as f:
+                s_data = json.load(f)
+                students = [{'username': u['username'], 'name': u.get('name', 'Sin Nombre')} for u in s_data]
+        return {'success': True, 'teachers': teachers, 'students': students}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_delete_account(username, role):
+    """Elimina una cuenta de profesor o estudiante."""
+    try:
+        file_path = USERS_FILE if role == 'teacher' else STUDENTS_FILE
+        if not os.path.exists(file_path): 
+            return {'success': False, 'error': 'Base de datos no encontrada.'}
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            users = json.load(f)
+        
+        new_users = [u for u in users if u.get('username') != username]
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(new_users, f, indent=4)
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_edit_account(old_username, new_username, new_name, new_password, role):
+    """Edita los datos de una cuenta existente."""
+    try:
+        file_path = USERS_FILE if role == 'teacher' else STUDENTS_FILE
+        if not os.path.exists(file_path): 
+            return {'success': False, 'error': 'Base de datos no encontrada.'}
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            users = json.load(f)
+        
+        # Verificar si el nuevo usuario ya existe (si el administrador lo cambió)
+        if old_username != new_username:
+            if any(u.get('username') == new_username for u in users):
+                return {'success': False, 'error': 'El nuevo nombre de usuario ya está en uso.'}
+        
+        for u in users:
+            if u.get('username') == old_username:
+                u['username'] = new_username
+                u['name'] = new_name
+                # Solo cambia la contraseña si el administrador escribió una nueva
+                if new_password and len(new_password) > 0: 
+                    u['password_hash'] = hashlib.sha256(new_password.encode()).hexdigest()
+                break
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(users, f, indent=4)
+        return {'success': True}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
