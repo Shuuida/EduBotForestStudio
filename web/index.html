@@ -1420,26 +1420,36 @@
                 }
             };
 
-            const exportToPythonFile = () => {
+            const exportToPythonFile = async () => {
                 if (!pythonCode || pythonCode.includes("El código generado aparecerá aquí")) {
                     addLog("No hay código Python generado para exportar. Presiona la pestaña 'Código Python' primero.", "warn");
                     return;
                 }
                 
-                // Creamos un Blob (archivo en memoria) con el texto del código
-                const blob = new Blob([pythonCode], { type: 'text/plain;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                
-                // Forzamos la descarga nativa del navegador
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = currentName ? `${currentName}_export.py` : 'script_edubot.py';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-                
-                addLog("Archivo .py exportado exitosamente.", "success");
+                // Pedimos confirmación elegante con TU CustomModal antes de abrir la ventana de Windows
+                setModalConfig({
+                    isOpen: true,
+                    type: 'confirm',
+                    title: 'Exportar Código',
+                    message: '¿Estás seguro de que deseas exportar el flujo visual a un archivo .py puro con tu progreso actual?',
+                    onConfirm: async () => {
+                        closeModal(); // Cerramos la alerta
+                        
+                        const suggestedName = currentName ? `${currentName}_export.py` : 'script_edubot.py';
+                        
+                        // Llamamos a Python para que maneje el guardado nativo sin alertas rojas
+                        const res = await window.eel.api_export_python_file(pythonCode, suggestedName)();
+                        
+                        if (res.success) {
+                            addLog(`Archivo .py exportado exitosamente en: ${res.path}`, "success");
+                        } else if (res.error === 'cancelado') {
+                            addLog("Exportación cancelada por el usuario.", "error"); // Mensaje en rojo
+                        } else {
+                            addLog(`Error de sistema al exportar: ${res.error}`, "error");
+                        }
+                    },
+                    onCancel: closeModal
+                });
             };
 
             const saveProject = async () => {

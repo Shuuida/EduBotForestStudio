@@ -17,6 +17,8 @@ import json
 #import yaml
 import webbrowser
 import hashlib
+import tkinter as tk
+from tkinter import filedialog
 from datetime import datetime
 from cryptography.fernet import Fernet
 
@@ -447,6 +449,40 @@ def api_open_manual():
         webbrowser.open(file_url)
         
         return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_export_python_file(code, default_name):
+    """
+    Abre una ventana nativa del SO para guardar el código Python.
+    Bypassea las advertencias de seguridad de descargas de Chromium.
+    """
+    try:
+        # Inicializa una ventana de Tkinter oculta
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True) # Fuerza la ventana al frente de EduBot
+
+        # Abre el diálogo nativo de Guardar Como
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".py",
+            initialfile=default_name,
+            title="Exportar Código Python",
+            filetypes=[("Archivos Python", "*.py"), ("Todos los archivos", "*.*")]
+        )
+
+        root.destroy() # Destruye la ventana oculta para liberar memoria
+
+        # Si el usuario presiona "Cancelar" o cierra la ventana
+        if not file_path:
+            return {'success': False, 'error': 'cancelado'}
+
+        # Si el usuario elige una ruta, guardamos el archivo físicamente
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(code)
+
+        return {'success': True, 'path': file_path}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
