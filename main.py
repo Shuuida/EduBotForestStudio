@@ -681,20 +681,53 @@ def api_reset_password(username, full_name, new_password, role):
 
 @eel.expose
 def api_get_all_accounts():
-    """Obtiene todos los profesores y estudiantes para el panel de administración interna."""
+    """
+    Lee las bases de datos de usuarios (profesores y estudiantes) por separado,
+    las unifica y las devuelve en formato de lista para el Dashboard.
+    """
     try:
         teachers = []
         students = []
-        if os.path.exists(USERS_FILE):
+
+        if os.path.exists(USERS_FILE) and os.path.getsize(USERS_FILE) > 0:
             with open(USERS_FILE, 'r', encoding='utf-8') as f:
-                t_data = json.load(f)
-                teachers = [{'username': u['username'], 'name': u.get('name', 'Sin Nombre')} for u in t_data]
-        if os.path.exists(STUDENTS_FILE):
+                try:
+                    users_db = json.load(f)
+                    # Forzamos que todos aquí tengan el rol 'teacher'
+                    for user in users_db:
+                        if isinstance(user, dict):
+                            teachers.append({
+                                'username': user.get('username', 'Desconocido'),
+                                'name': user.get('name', 'Profesor Sin Nombre'),
+                                'role': 'teacher'
+                            })
+                except Exception as e:
+                    print(f"[WARN] Error leyendo users.json: {e}")
+
+        if os.path.exists(STUDENTS_FILE) and os.path.getsize(STUDENTS_FILE) > 0:
             with open(STUDENTS_FILE, 'r', encoding='utf-8') as f:
-                s_data = json.load(f)
-                students = [{'username': u['username'], 'name': u.get('name', 'Sin Nombre')} for u in s_data]
-        return {'success': True, 'teachers': teachers, 'students': students}
+                try:
+                    students_db = json.load(f)
+                    # Forzamos que todos aquí tengan el rol 'student'
+                    for user in students_db:
+                        if isinstance(user, dict):
+                            students.append({
+                                'username': user.get('username', 'Desconocido'),
+                                'name': user.get('name', 'Estudiante Sin Nombre'),
+                                'role': 'student'
+                            })
+                except Exception as e:
+                    print(f"[WARN] Error leyendo students.json: {e}")
+
+        # Retornamos la data consolidada al frontend
+        return {
+            'success': True, 
+            'teachers': teachers, 
+            'students': students
+        }
+
     except Exception as e:
+        print(f"❌ Error crítico en api_get_all_accounts: {e}")
         return {'success': False, 'error': str(e)}
 
 @eel.expose
@@ -763,8 +796,8 @@ def ensure_db_exists():
             f.write(empty_data)
 
 @eel.expose
-def api_save_grade(student_name, challenge_id, score):
-    """Guarda o actualiza la nota cifrando el archivo completo en AES."""
+def api_save_grade(student_name, challenge_id, score, year="General", section="Única", topic="Sin Asignar", old_timestamp=None):
+    """Guarda o actualiza la nota, soportando metadatos de Año, Sección y Tema."""
     try:
         ensure_db_exists()
         grades = []
@@ -777,18 +810,34 @@ def api_save_grade(student_name, challenge_id, score):
                     decrypted_data = cipher.decrypt(file_content)
                     grades = json.loads(decrypted_data.decode('utf-8'))
                 except Exception:
-                    # Fallback: Si falla el descifrado, asume que es un JSON viejo en texto plano
                     grades = json.loads(file_content.decode('utf-8'))
             
-        # ACTUALIZAR DATOS
+        # ACTUALIZAR O INSERTAR
         found = False
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        status = "Aprobado" if float(score) >= 100 else "Reprobado" 
+        status = "Aprobado" if float(score) >= 10 else "Reprobado" 
         
         for record in grades:
-            if record.get('student') == student_name and record.get('challenge') == challenge_id:
+            # Si estamos editando un registro existente (usamos el timestamp original como ID único)
+            if old_timestamp and record.get('timestamp') == old_timestamp:
+                record['student'] = student_name
+                record['challenge'] = challenge_id
                 record['score'] = score
                 record['status'] = status
+                record['year'] = year
+                record['section'] = section
+                record['topic'] = topic
+                # Opcional: actualizar el timestamp o dejar el original de la evaluación
+                record['timestamp'] = timestamp 
+                found = True
+                break
+            # Fallback lógico si no hay old_timestamp pero coincide el reto y estudiante
+            elif not old_timestamp and record.get('student') == student_name and record.get('challenge') == challenge_id:
+                record['score'] = score
+                record['status'] = status
+                record['year'] = year
+                record['section'] = section
+                record['topic'] = topic
                 record['timestamp'] = timestamp
                 found = True
                 break
@@ -799,10 +848,46 @@ def api_save_grade(student_name, challenge_id, score):
                 'challenge': challenge_id,
                 'score': score,
                 'status': status,
+                'year': year,
+                'section': section,
+                'topic': topic,
                 'timestamp': timestamp
             })
             
         # CIFRAR Y GUARDAR
+        json_str = json.dumps(grades, indent=4)
+        encrypted_output = cipher.encrypt(json_str.encode('utf-8'))
+        
+        with open(GRADES_FILE, 'wb') as f:
+            f.write(encrypted_output)
+            
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@eel.expose
+def api_delete_grade(timestamp_id):
+    """Elimina un registro específico usando su timestamp como identificador único."""
+    try:
+        ensure_db_exists()
+        grades = []
+        
+        if os.path.getsize(GRADES_FILE) > 0:
+            with open(GRADES_FILE, 'rb') as f:
+                file_content = f.read()
+                try:
+                    decrypted_data = cipher.decrypt(file_content)
+                    grades = json.loads(decrypted_data.decode('utf-8'))
+                except Exception:
+                    grades = json.loads(file_content.decode('utf-8'))
+        
+        # Filtrar eliminando el que coincida con el timestamp
+        initial_length = len(grades)
+        grades = [g for g in grades if g.get('timestamp') != timestamp_id]
+        
+        if len(grades) == initial_length:
+            return {'success': False, 'error': 'Registro no encontrado.'}
+
         json_str = json.dumps(grades, indent=4)
         encrypted_output = cipher.encrypt(json_str.encode('utf-8'))
         
@@ -870,8 +955,8 @@ if __name__ == "__main__":
                     '--no-sandbox', 
                     '--disable-http-cache',
                     f'--user-data-dir={PROFILE_PATH}',
-                    '--disable-gpu' if False else '', # A veces necesario en PCs viejas
-                    '--kiosk' if False else ''
+                    '--disable-gpu',
+                    '--disable-software-rasterizer'
                 ]
             )
         except EnvironmentError:

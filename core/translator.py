@@ -75,52 +75,60 @@ class Translator:
 
     def _inject_auto_runner(self, blocks: List[Dict]) -> str:
         """
-        Genera el bloque if __name__ == "__main__": 
-        Ejecuta TODAS las clases y funciones huérfanas encontradas.
-        Atrapa errores de instanciación (como falta de argumentos en __init__) 
-        sin alertar ni confundir al estudiante.
+        Genera el auto-runner. 
+        Auto-rellena argumentos con valores "dummy" (1)
+        para forzar la ejecución y garantizar que la terminal siempre dé una respuesta.
         """
-        runner_code = "\n# --- Auto-Runner (Inferencias) ---\n"
-        runner_code += "if __name__ == '__main__':\n"
+        runner_code = "\n# --- Auto-Runner ---\n"
         has_executable = False
 
         # Recorremos los bloques en el orden estricto que dictó el Frontend
         for block in blocks:
             b_type = block.get('type')
             
-            # DETECCIÓN DE CLASE
             if b_type == 'py_class':
                 cls_name = block.get('name', 'MiClase')
                 body = block.get('body', [])
-                
-                # Buscamos todos los métodos internos
                 methods = [b for b in body if b.get('type') == 'py_func']
                 
-                runner_code += f"    try:\n"
-                runner_code += f"        # Instancia de prueba para {cls_name}\n"
-                runner_code += f"        _{cls_name}_inst = {cls_name}()\n"
+                # Análisis de argumentos del constructor
+                init_block = next((b for b in body if b.get('type') == 'py_init'), None)
+                init_args = init_block.get('args', 'self').replace('self', '').strip(' ,') if init_block else ""
+                
+                # Contamos comas y generamos un "1" por cada parámetro exigido
+                dummy_init = ", ".join(["1"] * len([a for a in init_args.split(',') if a.strip()]))
+                
+                runner_code += f"try:\n"
+                runner_code += f"    _{cls_name}_inst = {cls_name}({dummy_init})\n"
                 
                 if methods:
                     for m in methods:
                         m_name = m.get('func_name', 'main')
-                        # Evitar auto-llamar al constructor (__init__) repetidas veces
                         if m_name != '__init__':
-                            runner_code += f"        try:\n"
-                            runner_code += f"            _{cls_name}_inst.{m_name}()\n"
-                            runner_code += f"        except:\n"
-                            runner_code += f"            pass # Falla silenciosa en método\n"
+                            m_args = m.get('args', '').replace('self', '').strip(' ,')
+                            dummy_m_args = ", ".join(["1"] * len([a for a in m_args.split(',') if a.strip()]))
+                            
+                            runner_code += f"    try:\n"
+                            runner_code += f"        _{cls_name}_inst.{m_name}({dummy_m_args})\n"
+                            runner_code += f"    except Exception as e:\n"
+                            runner_code += f"        print(f'❌ Error en método {m_name}: {{e}}')\n"
                 
-                runner_code += f"    except:\n"
-                runner_code += f"        pass # Falla silenciosa al instanciar (ej. requiere argumentos)\n"
+                runner_code += f"except Exception as e:\n"
+                runner_code += f"    print(f'❌ Error al instanciar clase {cls_name}: {{e}}')\n"
                 has_executable = True
 
-            # DETECCIÓN DE FUNCIÓN SUELTA
             elif b_type == 'py_func':
                 func_name = block.get('func_name', 'main')
-                runner_code += f"    try:\n"
-                runner_code += f"        {func_name}()\n"
-                runner_code += f"    except:\n"
-                runner_code += f"        pass # Falla silenciosa en función\n"
+                args = block.get('args', '').strip()
+                
+                # Analizador léxico rápido para auto-rellenar
+                # Si pide (a, b), inyectará (1, 1). Si no pide nada, inyectará ().
+                dummy_args = ", ".join(["1"] * len([a for a in args.split(',') if a.strip()]))
+                
+                runner_code += f"try:\n"
+                runner_code += f"    {func_name}({dummy_args})\n"
+                runner_code += f"except Exception as e:\n"
+                runner_code += f"    print(f'❌ Error ejecutando función {func_name}: {{e}}')\n"
                 has_executable = True
 
         if not has_executable:
