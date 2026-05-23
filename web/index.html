@@ -227,7 +227,8 @@
             
             sortedIds.forEach(id => {
                 const node = nodeMap.get(id);
-                let block = { ...node.data, type: node.type, id: node.id };
+                const { onChange, ...nodeData } = node.data || {};
+                let block = { ...nodeData, type: node.type, id: node.id };
 
                 const getConnectedInputs = (targetId) => {
                     return edges.filter(e => e.target === targetId).map(e => {
@@ -655,7 +656,7 @@
             py_if: ({ data, id }) => <BaseNode title="If (Si)" icon={Split} color="bg-orange-600"><input name="condition" placeholder="x > 5" className="node-input nodrag" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300 mt-1">Conectar a derecha</div></BaseNode>,
             py_elif: ({ data, id }) => <BaseNode title="Else If (Tambien)" icon={Split} color="bg-orange-500"><input name="condition" placeholder="x == 5" className="node-input nodrag mb-1" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
             py_else: ({ data, id }) => <BaseNode title="Else (Sino)" icon={Split} color="bg-red-700"><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
-            py_loop: ({ data, id }) => <BaseNode title="For (Por 'x' en tal Rango)" icon={Repeat} color="bg-orange-700"><div className="flex gap-1 items-center mb-1"><span>for</span><input name="iterator" className="node-input nodrag w-8 p-0 text-center" value={data.iterator||'i'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span>in</span></div><input name="iterable" placeholder="range(10)" className="node-input nodrag" value={data.iterable||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_loop: ({ data, id }) => <BaseNode title="For (Por 'x' en tal Rango)" icon={Repeat} color="bg-orange-700"><div className="flex gap-1 items-center mb-1"><span>for</span><input name="iterator" placeholder="i" className="node-input nodrag w-14 p-0 text-center" value={data.iterator || ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span>in</span></div><input name="iterable" placeholder="range(10)" className="node-input nodrag" value={data.iterable||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
             py_while: ({ data, id }) => <BaseNode title="While (Mientras)" icon={RefreshCw} color="bg-orange-800"><input name="condition" placeholder="cond" className="node-input nodrag" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
             py_math: ({ data, id }) => <BaseNode title="Math (Operaciones)" icon={Calculator} color="bg-teal-600"><div className="flex gap-1"><input name="left" className="node-input nodrag w-1/3" value={data.left||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><select name="op" className="node-input nodrag w-1/4 p-0 text-center" value={data.op||'+'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option>+</option><option>-</option><option>*</option><option>/</option></select><input name="right" className="node-input nodrag w-1/3" value={data.right||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div className="mt-1 flex items-center gap-1"><span className="text-xs">Save:</span><input name="target" placeholder="res" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
             py_compare: ({ data, id }) => <BaseNode title="Compare (Comparar)" icon={CheckSquare} color="bg-cyan-700"><div className="flex gap-1"><input name="left" className="node-input nodrag w-1/3" value={data.left||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><select name="op" className="node-input nodrag w-1/4 p-0 text-center" value={data.op||'=='} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option>==</option><option>&gt;</option><option>&lt;</option></select><input name="right" className="node-input nodrag w-1/3" value={data.right||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
@@ -1446,6 +1447,7 @@
             const [pythonCode, setPythonCode] = useState("# El código generado aparecerá aquí...");
             const [isWaitingInput, setIsWaitingInput] = useState(false);
             const [terminalInput, setTerminalInput] = useState('');
+            const [isExecuting, setIsExecuting] = useState(false);
             const codeRef = useRef(null);
             const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
             
@@ -1509,8 +1511,19 @@
             }, [prefs]);
 
             const addLog = (msg, type = 'info') => setLogs(p => [...p, { time: new Date().toLocaleTimeString(), msg, type }]);
+
+            const clearNodeErrors = () => {
+                setNodes(nds => nds.map(node => ({
+                    ...node,
+                    data: { ...node.data, error: false, errorMsg: undefined }
+                })));
+            };
             
             const onConnect = useCallback((params) => {
+                if (params.source === params.target) {
+                    addLog('Conexión inválida: no se puede conectar un nodo consigo mismo.', 'warn');
+                    return;
+                }
                 setEdges((eds) => addEdge({ ...params, type: 'smart', animated: false, data: { status: 'idle' } }, eds));
                 setHasUnsavedChanges(true);
             }, [setEdges]);
@@ -1541,7 +1554,15 @@
                 const label = event.dataTransfer.getData('application/reactflow/label');
                 if (!type || !reactFlowInstance) return;
                 const position = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
-                const newNode = { id: `${type}_${Date.now()}`, type, position, data: { label, onChange: onNodeDataChange } };
+                const defaultData = { label, onChange: onNodeDataChange };
+                if (type === 'py_loop') {
+                    defaultData.iterator = 'i';
+                    defaultData.iterable = 'range(10)';
+                }
+                if (type === 'py_while') {
+                    defaultData.condition = 'True';
+                }
+                const newNode = { id: `${type}_${Date.now()}`, type, position, data: defaultData };
                 setNodes((nds) => nds.concat(newNode));
                 addLog(`Nodo: ${label}`);
                 setHasUnsavedChanges(true);
@@ -1574,6 +1595,7 @@
             };
 
             const runPipeline = async () => {
+                setIsExecuting(true);
                 setLogs([{ time: new Date().toLocaleTimeString(), msg: "Iniciando Sandbox...", type: 'warn' }]); 
                 setEdges(eds => eds.map(e => ({ ...e, data: { status: 'active' } })));
                 const blocks = serializeNodesLinear(nodes, edges);
@@ -1585,13 +1607,50 @@
                         } else {
                             addLog(`Error: ${res.error}`, 'error');
                         }
-                        setEdges(eds => eds.map(e => ({ ...e, data: { status: 'idle' } })));
                     }
                 } catch (e) { 
                     addLog(`Error: ${e}`, 'error');
                     setEdges(eds => eds.map(e => ({ ...e, data: { status: 'error' } })));
+                    setIsExecuting(false);
+                    setIsWaitingInput(false);
+                    return;
                 }
+
+                setEdges(eds => eds.map(e => ({ ...e, data: { status: 'idle' } })));
+                setIsExecuting(false);
+                setIsWaitingInput(false);
             };
+
+            const killExecution = async () => {
+                if (!window.eel) return;
+                const timestamp = new Date().toLocaleTimeString();
+                setLogs(p => [...p, { time: timestamp, msg: "Deteniendo ejecución...", type: 'warn' }] );
+                try {
+                    const res = await window.eel.api_kill_execution()();
+                    if (res.success) {
+                        addLog("Ejecución detenida.", 'warn');
+                    } else {
+                        addLog(res.error || "No hay ejecución activa.", 'info');
+                    }
+                } catch (e) {
+                    addLog(`Error al detener la ejecución: ${e}`, 'error');
+                }
+                setIsExecuting(false);
+                setIsWaitingInput(false);
+                setEdges(eds => eds.map(e => ({ ...e, data: { status: 'idle' } })));
+            };
+
+            useEffect(() => {
+                const handleExecutionKey = (event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && isExecuting) {
+                        event.preventDefault();
+                        killExecution();
+                    }
+                };
+
+                window.addEventListener('keydown', handleExecutionKey);
+                return () => window.removeEventListener('keydown', handleExecutionKey);
+            }, [isExecuting]);
 
             const [modalConfig, setModalConfig] = useState({ 
                 isOpen: false, type: 'prompt', title: '', message: '', 
@@ -1773,7 +1832,14 @@
                             <div className="h-6 w-px bg-gray-700 mx-1"></div>
                             <button onClick={() => setShowSettings(true)} className="p-2 rounded hover:bg-gray-700 text-gray-400 hover:text-white mr-2" title="Preferencias"> <Settings size={18} /> </button>
                             <button onClick={() => setShowTutorial(true)} className="p-2 rounded hover:bg-gray-700 text-yellow-400 mr-2" title="Ver Tutorial"><span className="text-xs font-bold border border-yellow-400 rounded-full w-5 h-5 flex items-center justify-center">?</span></button>
-                            <button onClick={runPipeline} className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded text-sm font-semibold flex items-center gap-2 shadow-lg"><Play size={16} fill="currentColor"/> Ejecutar</button>
+                            <div className="flex items-center gap-2">
+                                <button onClick={runPipeline} disabled={isExecuting} className={`bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded text-sm font-semibold flex items-center gap-2 shadow-lg ${isExecuting ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                                    <Play size={16} fill="currentColor"/> Ejecutar
+                                </button>
+                                <button onClick={killExecution} disabled={!isExecuting} className={`bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2 shadow-lg ${!isExecuting ? 'opacity-60 cursor-not-allowed' : ''}`} title="Detener ejecución (Ctrl+C)">
+                                    <XCircle size={16} /> Detener
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div className="flex-1 flex overflow-hidden">

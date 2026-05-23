@@ -8,29 +8,43 @@ import eel
 import traceback
 import threading
 import queue
+import multiprocessing
 import importlib
 import time
 from typing import Dict, Any
 
-input_queue = queue.Queue()
-gui_queue = queue.Queue()
-is_waiting_for_user = False
+# Use a Manager so queues and shared state can be passed across the worker process.
+if multiprocessing.current_process().name == 'MainProcess':
+    _multiprocessing_manager = multiprocessing.Manager()
+    input_queue = _multiprocessing_manager.Queue()
+    gui_queue = _multiprocessing_manager.Queue()
+    wait_flag = _multiprocessing_manager.Value('b', False)
+else:
+    _multiprocessing_manager = None
+    input_queue = None
+    gui_queue = None
+    wait_flag = None
+
+current_process = None
+current_process_lock = threading.Lock()
 
 def _global_log_worker():
     import gevent
     while True:
-        while not gui_queue.empty():
-            try:
-                msg = gui_queue.get_nowait()
-                if msg == "__TRIGGER_INPUT__":
-                    eel.trigger_frontend_input()()
-                else:
-                    eel.api_realtime_log(msg)()
-            except Exception:
-                pass
+        if gui_queue is not None:
+            while not gui_queue.empty():
+                try:
+                    msg = gui_queue.get_nowait()
+                    if msg == "__TRIGGER_INPUT__":
+                        eel.trigger_frontend_input()()
+                    else:
+                        eel.api_realtime_log(msg)()
+                except Exception:
+                    pass
         gevent.sleep(0.05)
 
-eel.spawn(_global_log_worker)
+if multiprocessing.current_process().name == 'MainProcess':
+    eel.spawn(_global_log_worker)
 
 # -------------------------------------
 # CONFIGURACIÓN DE SEGURIDAD
@@ -58,81 +72,119 @@ def sanitize_code(code: str) -> str:
             code = code.replace(kw, f"# BLOCKED: {kw}")
     return code
 
+def _execution_target(result_queue, input_q, gui_q, wait_flag_obj, code):
+    try:
+        safe_code = sanitize_code(code)
+
+        def custom_print(*args, sep=' ', end='\n', file=None, flush=False):
+            text = sep.join(map(str, args))
+            gui_q.put(str(text))
+
+        def interactive_input(prompt=""):
+            if prompt:
+                gui_q.put(str(prompt))
+            gui_q.put("__TRIGGER_INPUT__")
+            wait_flag_obj.value = True
+            user_response = input_q.get()
+            wait_flag_obj.value = False
+            gui_q.put(f"❯ {user_response}")
+            return str(user_response)
+
+        safe_builtins_map = {
+            'print': custom_print,
+            'input': interactive_input,
+            'range': range, 'len': len, 'int': int, 'float': float, 'str': str,
+            'list': list, 'dict': dict, 'set': set, 'tuple': tuple, 'bool': bool,
+            'abs': abs, 'min': min, 'max': max, 'sum': sum, 'round': round,
+            'zip': zip, 'map': map, 'filter': filter, 'sorted': sorted, 'enumerate': enumerate,
+            'Exception': Exception, 'ValueError': ValueError, 'TypeError': TypeError,
+            '__build_class__': __build_class__,
+            'object': object, 'super': super, 'classmethod': classmethod,
+            'staticmethod': staticmethod, 'property': property, 'type': type,
+            'isinstance': isinstance, '__import__': safe_import
+        }
+
+        env = {
+            '__builtins__': safe_builtins_map,
+            '__name__': '__main__'
+        }
+
+        exec(safe_code, env)
+        result_queue.put({'success': True, 'output': '', 'error': ''})
+
+    except SyntaxError as se:
+        result_queue.put({'success': False, 'output': '', 'error': f"Error de Sintaxis: {se}"})
+    except ImportError as ie:
+        result_queue.put({'success': False, 'output': '', 'error': f"Error de Importación: {ie}"})
+    except Exception:
+        result_queue.put({'success': False, 'output': '', 'error': traceback.format_exc()})
+
+
+def kill_execution() -> bool:
+    global current_process
+    if current_process is None:
+        return False
+
+    with current_process_lock:
+        if current_process is not None and current_process.is_alive():
+            current_process.terminate()
+            current_process.join(timeout=1)
+            if wait_flag is not None:
+                wait_flag.value = False
+            current_process = None
+            return True
+
+    return False
+
 # ---------------------------------------------
 # EJECUTOR PRINCIPAL
 def execute_user_code(code: str, timeout: int = 5) -> Dict[str, Any]:
-    global is_waiting_for_user
+    global current_process
     result = {'success': False, 'output': '', 'error': ''}
-    
-    # Limpiar entradas zombis
-    while not input_queue.empty(): input_queue.get_nowait()
-    
-    def target(q):
-        global is_waiting_for_user
+
+    if input_queue is None or gui_queue is None or wait_flag is None or _multiprocessing_manager is None:
+        return {'success': False, 'output': '', 'error': 'El entorno de ejecución no está inicializado correctamente.'}
+
+    if current_process is not None and current_process.is_alive():
+        return {'success': False, 'output': '', 'error': 'Ejecutor ocupado. Espere a que termine la ejecución actual.'}
+
+    while not input_queue.empty():
         try:
-            safe_code = sanitize_code(code)
-            
-            def custom_print(*args, sep=' ', end='\n', file=None, flush=False):
-                text = sep.join(map(str, args))
-                gui_queue.put(str(text))
+            input_queue.get_nowait()
+        except queue.Empty:
+            break
 
-            def interactive_input(prompt=""):
-                global is_waiting_for_user
-                if prompt: gui_queue.put(str(prompt))
-                gui_queue.put("__TRIGGER_INPUT__")
-                is_waiting_for_user = True
-                user_response = input_queue.get() 
-                is_waiting_for_user = False
-                gui_queue.put(f"❯ {user_response}")
-                return str(user_response)
+    result_queue = _multiprocessing_manager.Queue()
+    process = multiprocessing.Process(
+        target=_execution_target,
+        args=(result_queue, input_queue, gui_queue, wait_flag, code)
+    )
 
-            safe_builtins_map = {
-                'print': custom_print,
-                'input': interactive_input,
-                'range': range, 'len': len, 'int': int, 'float': float, 'str': str,
-                'list': list, 'dict': dict, 'set': set, 'tuple': tuple, 'bool': bool,
-                'abs': abs, 'min': min, 'max': max, 'sum': sum, 'round': round,
-                'zip': zip, 'map': map, 'filter': filter, 'sorted': sorted, 'enumerate': enumerate,
-                'Exception': Exception, 'ValueError': ValueError, 'TypeError': TypeError,
-                '__build_class__': __build_class__,
-                'object': object, 'super': super, 'classmethod': classmethod,          
-                'staticmethod': staticmethod, 'property': property, 'type': type,                        
-                'isinstance': isinstance, '__import__': safe_import
-            }
+    with current_process_lock:
+        current_process = process
+    process.start()
 
-            # __name__ se pasa a nivel de globals para que no haya falsos saltos
-            env = {
-                '__builtins__': safe_builtins_map,
-                '__name__': '__main__'
-            }
-
-            exec(safe_code, env)
-            q.put({'success': True, 'output': '', 'error': ''})
-
-        except SyntaxError as se:
-            q.put({'success': False, 'output': '', 'error': f"Error de Sintaxis: {se}"})
-        except ImportError as ie:
-            q.put({'success': False, 'output': '', 'error': f"Error de Importación: {ie}"})
-        except Exception:
-            q.put({'success': False, 'output': '', 'error': traceback.format_exc()})
-
-    q = queue.Queue()
-    thread = threading.Thread(target=target, args=(q,))
-    thread.daemon = True 
-    thread.start()
-    
     time_elapsed = 0.0
-    while thread.is_alive() and time_elapsed < timeout:
-        eel.sleep(0.05) 
-        if not is_waiting_for_user:
+    while process.is_alive() and time_elapsed < timeout:
+        eel.sleep(0.05)
+        if not wait_flag.value:
             time_elapsed += 0.05
-            
-    if thread.is_alive():
-        result['error'] = "Tiempo excedido (Timeout). ¿El hilo principal se colgó?"
-    else:
-        if not q.empty():
-            result = q.get()
-        else:
-            result['error'] = "Error desconocido de procesamiento."
-            
+
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=1)
+        with current_process_lock:
+            current_process = None
+        wait_flag.value = False
+        result['error'] = 'Tiempo excedido (Timeout). ¿El proceso se colgó?'
+        return result
+
+    with current_process_lock:
+        current_process = None
+
+    try:
+        result = result_queue.get_nowait()
+    except queue.Empty:
+        result = {'success': False, 'output': '', 'error': 'Error desconocido de procesamiento.'}
+
     return result
