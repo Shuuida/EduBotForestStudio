@@ -14,16 +14,10 @@ import time
 from typing import Dict, Any
 
 # Use a Manager so queues and shared state can be passed across the worker process.
-if multiprocessing.current_process().name == 'MainProcess':
-    _multiprocessing_manager = multiprocessing.Manager()
-    input_queue = _multiprocessing_manager.Queue()
-    gui_queue = _multiprocessing_manager.Queue()
-    wait_flag = _multiprocessing_manager.Value('b', False)
-else:
-    _multiprocessing_manager = None
-    input_queue = None
-    gui_queue = None
-    wait_flag = None
+_multiprocessing_manager = None
+input_queue = None
+gui_queue = None
+wait_flag = None
 
 current_process = None
 current_process_lock = threading.Lock()
@@ -42,6 +36,15 @@ def _global_log_worker():
                 except Exception:
                     pass
         gevent.sleep(0.05)
+
+def _init_multiprocessing():
+    global _multiprocessing_manager, input_queue, gui_queue, wait_flag
+    if _multiprocessing_manager is None:
+        _multiprocessing_manager = multiprocessing.Manager()
+        input_queue = _multiprocessing_manager.Queue()
+        gui_queue = _multiprocessing_manager.Queue()
+        wait_flag = _multiprocessing_manager.Value('b', False)
+        eel.spawn(_global_log_worker)
 
 if multiprocessing.current_process().name == 'MainProcess':
     eel.spawn(_global_log_worker)
@@ -140,6 +143,7 @@ def kill_execution() -> bool:
 # EJECUTOR PRINCIPAL
 def execute_user_code(code: str, timeout: int = 5) -> Dict[str, Any]:
     global current_process
+    _init_multiprocessing()
     result = {'success': False, 'output': '', 'error': ''}
 
     if input_queue is None or gui_queue is None or wait_flag is None or _multiprocessing_manager is None:

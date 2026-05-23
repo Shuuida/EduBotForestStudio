@@ -245,7 +245,9 @@
                 if (node.type === 'py_print' && inputs.length > 0 && !block.content) {
                     block.content = inputs[0];
                 }
-
+                if (node.type === 'py_loop' && (!block.iterator || block.iterator.trim() === '')) {
+                    block.iterator = 'i';
+                }
                 if (CONTAINER_TYPES.includes(node.type)) {
                     block.body = [];
                 }
@@ -613,11 +615,20 @@
         );
 
         const BaseNode = ({ data, title, icon: Icon, color, children }) => (
-            <div>
-                <div className={`forest-node-header ${color} text-white`}><Icon size={16} /><span>{title}</span></div>
+            <div className={`relative transition-all ${data.error ? 'ring-2 ring-red-500 shadow-[0_0_15px_rgba(239,68,68,0.6)] rounded-lg' : ''}`}>
+                <div className={`forest-node-header ${color} text-white`}>
+                    <Icon size={16} /><span>{title}</span>
+                </div>
                 <div className="forest-node-body">{children}</div>
                 <Handle type="target" position="left" className="!bg-gray-400 !w-3 !h-3 hover:!bg-white" />
                 <Handle type="source" position="right" className="!bg-blue-500 !w-3 !h-3 hover:!bg-white" />
+                
+                {/* Cartelito flotante con el error de sintaxis */}
+                {data.errorMsg && (
+                    <div className="absolute -bottom-8 left-0 text-red-300 font-bold text-[10px] bg-gray-900 border border-red-500/50 px-2 py-1 rounded z-50 whitespace-nowrap animate-fade-in shadow-lg">
+                        {data.errorMsg}
+                    </div>
+                )}
             </div>
         );
 
@@ -1595,6 +1606,7 @@
             };
 
             const runPipeline = async () => {
+                clearNodeErrors(); // Limpiamos errores pasados
                 setIsExecuting(true);
                 setLogs([{ time: new Date().toLocaleTimeString(), msg: "Iniciando Sandbox...", type: 'warn' }]); 
                 setEdges(eds => eds.map(e => ({ ...e, data: { status: 'active' } })));
@@ -1606,6 +1618,16 @@
                             addLog("Ejecución finalizada.", 'success');
                         } else {
                             addLog(`Error: ${res.error}`, 'error');
+                            
+                            if (res.error_nodes) {
+                                setNodes(nds => nds.map(n => {
+                                    const errInfo = res.error_nodes.find(err => err.node_id === n.id);
+                                    if (errInfo) {
+                                        return { ...n, data: { ...n.data, error: true, errorMsg: errInfo.message } };
+                                    }
+                                    return n;
+                                }));
+                            }
                         }
                     }
                 } catch (e) { 

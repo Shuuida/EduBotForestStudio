@@ -23,6 +23,7 @@ import tkinter as tk
 from tkinter import filedialog
 from datetime import datetime
 from cryptography.fernet import Fernet
+import multiprocessing
 
 #IMPORTACIONES DEL NÚCLEO DE EDUBOT
 from core.ml_adapter import Translator, execute_structs
@@ -1070,6 +1071,7 @@ def api_provide_input(user_text):
 # PUNTO DE ENTRADA PRINCIPAL
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
 
     try:
         os.chdir(file_handler.BASE_PATH)
