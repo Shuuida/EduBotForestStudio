@@ -230,33 +230,47 @@ def detect_typo_errors(blocks):
         if name and isinstance(name, str) and name.strip():
             defined_names[name.strip()] = node_id
 
-    for block in blocks:
-        if not isinstance(block, dict):
-            continue
-        b_type = block.get('type', '')
-        if b_type == 'py_var':
-            add_definition(block.get('var_name'), block.get('id'))
-        elif b_type == 'py_math':
-            add_definition(block.get('target'), block.get('id'))
-        elif b_type in ['py_int', 'py_float', 'py_input']:
-            add_definition(block.get('target'), block.get('id'))
-        elif b_type == 'py_loop':
-            add_definition(block.get('iterator'), block.get('id'))
-        elif b_type == 'py_func':
-            add_definition(block.get('func_name'), block.get('id'))
-        elif b_type == 'py_class':
-            add_definition(block.get('name'), block.get('id'))
+    # PRIMERA PASADA (RECURSIVA): Registrar todas las variables en todos los niveles
+    def gather_definitions(block_list):
+        for block in block_list:
+            if not isinstance(block, dict):
+                continue
+            b_type = block.get('type', '')
+            if b_type == 'py_var':
+                add_definition(block.get('var_name'), block.get('id'))
+            elif b_type == 'py_math':
+                add_definition(block.get('target'), block.get('id'))
+            elif b_type in ['py_int', 'py_float', 'py_input']:
+                add_definition(block.get('target'), block.get('id'))
+            elif b_type == 'py_loop':
+                add_definition(block.get('iterator'), block.get('id'))
+            elif b_type == 'py_func':
+                add_definition(block.get('func_name'), block.get('id'))
+            elif b_type == 'py_class':
+                add_definition(block.get('name'), block.get('id'))
+
+            # Si el nodo tiene hijos (If, For, etc), entramos a revisarlos
+            body = block.get('body', [])
+            if isinstance(body, list):
+                gather_definitions(body)
+
+    gather_definitions(blocks)
 
     def suggest(name):
         candidates = difflib.get_close_matches(name, defined_names.keys(), n=1, cutoff=0.6)
         return candidates[0] if candidates else None
 
     def check_expression(expr, block_id, description):
-        names, parse_error = _extract_names(expr)
+        if expr is None:
+            return
+            
+        # str() protege contra números puros que puedan crashear el AST
+        names, parse_error = _extract_names(str(expr))
+        
         if parse_error:
             errors.append({
                 'node_id': block_id,
-                'message': f"Error de sintaxis en {description}: {parse_error}",
+                'message': f"Sintaxis inválida en {description}",
                 'suggestion': None
             })
             return
@@ -268,55 +282,61 @@ def detect_typo_errors(blocks):
             if suggestion:
                 errors.append({
                     'node_id': block_id,
-                    'message': f"Nombre no definido '{name}' en {description}. Quizás quiso decir '{suggestion}'?",
+                    'message': f"'{name}' no existe. ¿Quisiste decir '{suggestion}'?",
                     'suggestion': suggestion
                 })
             else:
                 errors.append({
                     'node_id': block_id,
-                    'message': f"Nombre no definido '{name}' en {description}.",
+                    'message': f"La variable '{name}' no ha sido creada.",
                     'suggestion': None
                 })
 
-    for block in blocks:
-        if not isinstance(block, dict):
-            continue
-        b_type = block.get('type', '')
-        block_id = block.get('id')
-        if b_type == 'py_var':
-            check_expression(block.get('value', ''), block_id, 'valor de variable')
-        elif b_type == 'py_math':
-            check_expression(block.get('left', ''), block_id, 'lado izquierdo de la operación')
-            check_expression(block.get('right', ''), block_id, 'lado derecho de la operación')
-        elif b_type == 'py_print':
-            check_expression(block.get('content', ''), block_id, 'contenido de print')
-        elif b_type == 'py_input':
-            # target is definition, prompt can be ignored
-            pass
-        elif b_type == 'py_int' or b_type == 'py_float':
-            check_expression(block.get('value', ''), block_id, 'valor de conversión')
-        elif b_type == 'py_compare':
-            check_expression(block.get('left', ''), block_id, 'lado izquierdo de la comparación')
-            check_expression(block.get('right', ''), block_id, 'lado derecho de la comparación')
-        elif b_type == 'py_if':
-            check_expression(block.get('condition', ''), block_id, 'condición if')
-        elif b_type == 'py_elif':
-            check_expression(block.get('condition', ''), block_id, 'condición elif')
-        elif b_type == 'py_loop':
-            check_expression(block.get('iterable', ''), block_id, 'iterable del for')
-        elif b_type == 'py_while':
-            check_expression(block.get('condition', ''), block_id, 'condición while')
-        elif b_type == 'py_call':
-            func_expr = block.get('func', '')
-            args_expr = block.get('args', '')
-            check_expression(func_expr, block_id, 'función llamada')
-            if args_expr:
-                # parse as tuple-like args
-                check_expression(f"({args_expr})", block_id, 'argumentos de la llamada')
-        elif b_type == 'py_return':
-            check_expression(block.get('value', ''), block_id, 'valor de retorno')
+    # SEGUNDA PASADA (RECURSIVA): Buscar errores en cualquier profundidad
+    def check_blocks(block_list):
+        for block in block_list:
+            if not isinstance(block, dict):
+                continue
+            b_type = block.get('type', '')
+            block_id = block.get('id')
+            
+            if b_type == 'py_var':
+                check_expression(block.get('value', ''), block_id, 'el valor')
+            elif b_type == 'py_math':
+                check_expression(block.get('left', ''), block_id, 'el lado izquierdo')
+                check_expression(block.get('right', ''), block_id, 'el lado derecho')
+            elif b_type == 'py_print':
+                check_expression(block.get('content', ''), block_id, 'lo que se va a imprimir')
+            elif b_type in ['py_int', 'py_float']:
+                check_expression(block.get('value', ''), block_id, 'la conversión')
+            elif b_type == 'py_compare':
+                check_expression(block.get('left', ''), block_id, 'la comparación (izq)')
+                check_expression(block.get('right', ''), block_id, 'la comparación (der)')
+            elif b_type == 'py_if':
+                check_expression(block.get('condition', ''), block_id, 'la condición del If')
+            elif b_type == 'py_elif':
+                check_expression(block.get('condition', ''), block_id, 'la condición del Elif')
+            elif b_type == 'py_loop':
+                check_expression(block.get('iterable', ''), block_id, 'el rango del For')
+            elif b_type == 'py_while':
+                check_expression(block.get('condition', ''), block_id, 'la condición del While')
+            elif b_type == 'py_call':
+                func_expr = block.get('func', '')
+                args_expr = block.get('args', '')
+                check_expression(func_expr, block_id, 'la llamada a función')
+                if args_expr:
+                    check_expression(f"({args_expr})", block_id, 'los parámetros')
+            elif b_type == 'py_return':
+                check_expression(block.get('value', ''), block_id, 'el valor a retornar')
 
-    # Remove duplicates by node_id + message
+            # Volvemos a bajar en cascada para revisar el interior de los contenedores
+            body = block.get('body', [])
+            if isinstance(body, list):
+                check_blocks(body)
+
+    check_blocks(blocks)
+
+    # Filtrar duplicados
     unique = {}
     for err in errors:
         key = (err['node_id'], err['message'])
