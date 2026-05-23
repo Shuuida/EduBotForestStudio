@@ -140,14 +140,15 @@
             Settings: (p) => <IconBase {...p}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></IconBase>,
             Monitor: (p) => <IconBase {...p}><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></IconBase>,
             Share2: (p) => <IconBase {...p}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></IconBase>,
-            X: (p) => <IconBase {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></IconBase>
+            X: (p) => <IconBase {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></IconBase>,
+            Copy: (p) => <IconBase {...p}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></IconBase>
         };
 
         const { 
             Users, Sprout, Cpu, Play, Terminal, Trash2, Save, FolderOpen, Code, 
             Variable, FunctionSquare, Repeat, Split, XCircle, Keyboard, RefreshCw, 
             Calculator, CheckSquare, ArrowLeft, Box, Package, AlertTriangle, 
-            FileWarning, Settings, Monitor, Share2, X
+            FileWarning, Settings, Monitor, Share2, X, Copy
         } = Icons;
 
         // LÓGICA DEL MOTOR (SERIALIZACIÓN & SCOPE)
@@ -615,17 +616,16 @@
         );
 
         const BaseNode = ({ data, title, icon: Icon, color, children }) => (
-            <div className={`relative transition-all ${data.error ? 'ring-2 ring-red-500 shadow-[0_0_15px_rgba(239,68,68,0.6)] rounded-lg' : ''}`}>
-                <div className={`forest-node-header ${color} text-white`}>
-                    <Icon size={16} /><span>{title}</span>
-                </div>
+            // El aura roja reacciona dinámicamente si el backend manda error
+            <div className={`relative transition-all duration-300 ${data?.error ? 'ring-2 ring-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)] rounded-lg scale-[1.02]' : ''}`}>
+                <div className={`forest-node-header ${color} text-white`}><Icon size={16} /><span>{title}</span></div>
                 <div className="forest-node-body">{children}</div>
                 <Handle type="target" position="left" className="!bg-gray-400 !w-3 !h-3 hover:!bg-white" />
                 <Handle type="source" position="right" className="!bg-blue-500 !w-3 !h-3 hover:!bg-white" />
                 
-                {/* Cartelito flotante con el error de sintaxis */}
-                {data.errorMsg && (
-                    <div className="absolute -bottom-8 left-0 text-red-300 font-bold text-[10px] bg-gray-900 border border-red-500/50 px-2 py-1 rounded z-50 whitespace-nowrap animate-fade-in shadow-lg">
+                {/* Cartel flotante indicando el error de sintaxis al estudiante */}
+                {data?.errorMsg && (
+                    <div className="absolute -bottom-10 left-0 text-red-200 font-bold text-[11px] bg-red-950/90 border border-red-500 px-3 py-1.5 rounded-lg z-50 whitespace-nowrap animate-fade-in shadow-xl backdrop-blur-sm">
                         {data.errorMsg}
                     </div>
                 )}
@@ -661,29 +661,30 @@
         
         const edgeTypes = { smart: SmartEdge };
 
+        // Nota: Se añade "data={data}" a cada BaseNode para que reciban la señal de error
         const nodeTypes = {
-            py_var: ({ data, id }) => <BaseNode title="Variable" icon={Variable} color="bg-yellow-600"><div className="flex gap-2 items-center"><input name="var_name" placeholder="x" className="node-input nodrag w-1/3" value={data.var_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-bold">=</span><input name="value" placeholder="10" className="node-input nodrag" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
-            py_print: ({ data, id }) => <BaseNode title="Print (Imprimir)" icon={Terminal} color="bg-gray-600"><input name="content" placeholder="msg" className="node-input nodrag" value={data.content||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
-            py_if: ({ data, id }) => <BaseNode title="If (Si)" icon={Split} color="bg-orange-600"><input name="condition" placeholder="x > 5" className="node-input nodrag" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300 mt-1">Conectar a derecha</div></BaseNode>,
-            py_elif: ({ data, id }) => <BaseNode title="Else If (Tambien)" icon={Split} color="bg-orange-500"><input name="condition" placeholder="x == 5" className="node-input nodrag mb-1" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
-            py_else: ({ data, id }) => <BaseNode title="Else (Sino)" icon={Split} color="bg-red-700"><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
-            py_loop: ({ data, id }) => <BaseNode title="For (Por 'x' en tal Rango)" icon={Repeat} color="bg-orange-700"><div className="flex gap-1 items-center mb-1"><span>for</span><input name="iterator" placeholder="i" className="node-input nodrag w-14 p-0 text-center" value={data.iterator || ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span>in</span></div><input name="iterable" placeholder="range(10)" className="node-input nodrag" value={data.iterable||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
-            py_while: ({ data, id }) => <BaseNode title="While (Mientras)" icon={RefreshCw} color="bg-orange-800"><input name="condition" placeholder="cond" className="node-input nodrag" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
-            py_math: ({ data, id }) => <BaseNode title="Math (Operaciones)" icon={Calculator} color="bg-teal-600"><div className="flex gap-1"><input name="left" className="node-input nodrag w-1/3" value={data.left||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><select name="op" className="node-input nodrag w-1/4 p-0 text-center" value={data.op||'+'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option>+</option><option>-</option><option>*</option><option>/</option></select><input name="right" className="node-input nodrag w-1/3" value={data.right||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div className="mt-1 flex items-center gap-1"><span className="text-xs">Save:</span><input name="target" placeholder="res" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
-            py_compare: ({ data, id }) => <BaseNode title="Compare (Comparar)" icon={CheckSquare} color="bg-cyan-700"><div className="flex gap-1"><input name="left" className="node-input nodrag w-1/3" value={data.left||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><select name="op" className="node-input nodrag w-1/4 p-0 text-center" value={data.op||'=='} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option>==</option><option>&gt;</option><option>&lt;</option></select><input name="right" className="node-input nodrag w-1/3" value={data.right||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
-            py_func: ({ data, id }) => <BaseNode title="Function (Funcion)" icon={FunctionSquare} color="bg-violet-600"><input name="func_name" placeholder="name" className="node-input nodrag mb-1" value={data.func_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="args" placeholder="args" className="node-input nodrag" value={data.args||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
-            py_call: ({ data, id }) => <BaseNode title="Llamar Función/Método" icon={Play} color="bg-rose-600"><div className="flex items-center gap-1 mb-1"><input name="func" placeholder="obj.metodo" className="node-input nodrag w-24" value={data.func !== undefined ? data.func : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-mono text-xs text-rose-200">(</span><input name="args" placeholder="args..." className="node-input nodrag w-16" value={data.args !== undefined ? data.args : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-mono text-xs text-rose-200">)</span></div></BaseNode>,
-            py_return: ({ data, id }) => <BaseNode title="Return (Retornar)" icon={ArrowLeft} color="bg-rose-600"><input name="value" placeholder="val" className="node-input nodrag" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
-            py_control: ({ data, id }) => <BaseNode title="Control" icon={XCircle} color="bg-red-800"><select name="control_type" className="node-input nodrag" value={data.control_type||'break'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="break">Break</option><option value="continue">Continue</option><option value="pass">Pass</option></select></BaseNode>,
-            py_input: ({ data, id }) => <BaseNode title="Input (Escribir)" icon={Keyboard} color="bg-slate-600"><input name="prompt" placeholder="msg" className="node-input nodrag mb-1" value={data.prompt||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="target" placeholder="var" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
-            py_int: ({ data, id }) => <BaseNode title="To Integer (Enteros)" icon={Code} color="bg-pink-700"><div className="flex gap-1 items-center mb-1"><span className="text-xs font-mono">int(</span><input name="value" placeholder="var" className="node-input nodrag w-16" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="text-xs font-mono">)</span></div><div className="flex items-center gap-1"><span className="text-xs">Save:</span><input name="target" placeholder="res" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
-            py_float: ({ data, id }) => <BaseNode title="To Decimal (Decimales)" icon={Code} color="bg-pink-600"><div className="flex gap-1 items-center mb-1"><span className="text-xs font-mono">float(</span><input name="value" placeholder="var" className="node-input nodrag w-16" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="text-xs font-mono">)</span></div><div className="flex items-center gap-1"><span className="text-xs">Save:</span><input name="target" placeholder="res" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
-            py_class: ({ data, id }) => <BaseNode title="Class (Clases)" icon={Box} color="bg-indigo-700"><input name="name" placeholder="Name" className="node-input nodrag mb-1" value={data.name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="bases" placeholder="Inherits" className="node-input nodrag" value={data.bases||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
-            py_init: ({ data, id }) => <BaseNode title="Constructor (__init__)" icon={FunctionSquare} color="bg-indigo-600"><div className="flex gap-1 items-center mb-1"><span className="text-xs font-mono">def __init__(</span><input name="args" placeholder="self" className="node-input nodrag w-16" value={data.args !== undefined ? data.args : 'self'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="text-xs font-mono">):</span></div><div className="text-[10px] text-gray-300 mt-1">Conectar a derecha</div></BaseNode>,
-            py_self: ({ data, id }) => <BaseNode title="Atributo (self)" icon={Box} color="bg-indigo-500"><div className="flex items-center gap-1 mb-1"><span className="font-mono text-xs font-bold text-indigo-200">self.</span><input name="attr" placeholder="nombre" className="node-input nodrag w-20" value={data.attr !== undefined ? data.attr : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-bold text-white">=</span><input name="value" placeholder="val" className="node-input nodrag w-20" value={data.value !== undefined ? data.value : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
-            py_import: ({ data, id }) => <BaseNode title="Import (Importar)" icon={Package} color="bg-sky-700"><div className="flex gap-1 mb-1"><span className="text-xs">from</span><input name="from" className="node-input nodrag" value={data.from||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div className="flex gap-1"><span className="text-xs">import</span><input name="names" className="node-input nodrag" value={data.names||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
-            py_try: ({ data, id }) => <BaseNode title="Try (Intentar)" icon={AlertTriangle} color="bg-amber-600"><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
-            py_except: ({ data, id }) => <BaseNode title="Except (Error)" icon={AlertTriangle} color="bg-amber-700"><input name="error_type" placeholder="Exception as e" className="node-input nodrag mb-1" value={data.error_type !== undefined ? data.error_type : 'Exception as e'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
+            py_var: ({ data, id }) => <BaseNode data={data} title="Variable" icon={Variable} color="bg-yellow-600"><div className="flex gap-2 items-center"><input name="var_name" placeholder="x" className="node-input nodrag w-1/3" value={data.var_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-bold">=</span><input name="value" placeholder="10" className="node-input nodrag" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
+            py_print: ({ data, id }) => <BaseNode data={data} title="Print (Imprimir)" icon={Terminal} color="bg-gray-600"><input name="content" placeholder="msg" className="node-input nodrag" value={data.content||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_if: ({ data, id }) => <BaseNode data={data} title="If (Si)" icon={Split} color="bg-orange-600"><input name="condition" placeholder="x > 5" className="node-input nodrag" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300 mt-1">Conectar a derecha</div></BaseNode>,
+            py_elif: ({ data, id }) => <BaseNode data={data} title="Else If (Tambien)" icon={Split} color="bg-orange-500"><input name="condition" placeholder="x == 5" className="node-input nodrag mb-1" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
+            py_else: ({ data, id }) => <BaseNode data={data} title="Else (Sino)" icon={Split} color="bg-red-700"><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
+            py_loop: ({ data, id }) => <BaseNode data={data} title="For (Por 'x' en tal Rango)" icon={Repeat} color="bg-orange-700"><div className="flex gap-1 items-center mb-1"><span>for</span><input name="iterator" placeholder="i" className="node-input nodrag w-14 p-0 text-center" value={data.iterator || ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span>in</span></div><input name="iterable" placeholder="range(10)" className="node-input nodrag" value={data.iterable||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_while: ({ data, id }) => <BaseNode data={data} title="While (Mientras)" icon={RefreshCw} color="bg-orange-800"><input name="condition" placeholder="cond" className="node-input nodrag" value={data.condition||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_math: ({ data, id }) => <BaseNode data={data} title="Math (Operaciones)" icon={Calculator} color="bg-teal-600"><div className="flex gap-1"><input name="left" className="node-input nodrag w-1/3" value={data.left||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><select name="op" className="node-input nodrag w-1/4 p-0 text-center" value={data.op||'+'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option>+</option><option>-</option><option>*</option><option>/</option></select><input name="right" className="node-input nodrag w-1/3" value={data.right||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div className="mt-1 flex items-center gap-1"><span className="text-xs">Save:</span><input name="target" placeholder="res" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
+            py_compare: ({ data, id }) => <BaseNode data={data} title="Compare (Comparar)" icon={CheckSquare} color="bg-cyan-700"><div className="flex gap-1"><input name="left" className="node-input nodrag w-1/3" value={data.left||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><select name="op" className="node-input nodrag w-1/4 p-0 text-center" value={data.op||'=='} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option>==</option><option>&gt;</option><option>&lt;</option></select><input name="right" className="node-input nodrag w-1/3" value={data.right||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
+            py_func: ({ data, id }) => <BaseNode data={data} title="Function (Funcion)" icon={FunctionSquare} color="bg-violet-600"><input name="func_name" placeholder="name" className="node-input nodrag mb-1" value={data.func_name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="args" placeholder="args" className="node-input nodrag" value={data.args||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_call: ({ data, id }) => <BaseNode data={data} title="Llamar Función/Método" icon={Play} color="bg-rose-600"><div className="flex items-center gap-1 mb-1"><input name="func" placeholder="obj.metodo" className="node-input nodrag w-24" value={data.func !== undefined ? data.func : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-mono text-xs text-rose-200">(</span><input name="args" placeholder="args..." className="node-input nodrag w-16" value={data.args !== undefined ? data.args : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-mono text-xs text-rose-200">)</span></div></BaseNode>,
+            py_return: ({ data, id }) => <BaseNode data={data} title="Return (Retornar)" icon={ArrowLeft} color="bg-rose-600"><input name="value" placeholder="val" className="node-input nodrag" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_control: ({ data, id }) => <BaseNode data={data} title="Control" icon={XCircle} color="bg-red-800"><select name="control_type" className="node-input nodrag" value={data.control_type||'break'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})}><option value="break">Break</option><option value="continue">Continue</option><option value="pass">Pass</option></select></BaseNode>,
+            py_input: ({ data, id }) => <BaseNode data={data} title="Input (Escribir)" icon={Keyboard} color="bg-slate-600"><input name="prompt" placeholder="msg" className="node-input nodrag mb-1" value={data.prompt||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="target" placeholder="var" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_int: ({ data, id }) => <BaseNode data={data} title="To Integer (Enteros)" icon={Code} color="bg-pink-700"><div className="flex gap-1 items-center mb-1"><span className="text-xs font-mono">int(</span><input name="value" placeholder="var" className="node-input nodrag w-16" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="text-xs font-mono">)</span></div><div className="flex items-center gap-1"><span className="text-xs">Save:</span><input name="target" placeholder="res" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
+            py_float: ({ data, id }) => <BaseNode data={data} title="To Decimal (Decimales)" icon={Code} color="bg-pink-600"><div className="flex gap-1 items-center mb-1"><span className="text-xs font-mono">float(</span><input name="value" placeholder="var" className="node-input nodrag w-16" value={data.value||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="text-xs font-mono">)</span></div><div className="flex items-center gap-1"><span className="text-xs">Save:</span><input name="target" placeholder="res" className="node-input nodrag" value={data.target||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
+            py_class: ({ data, id }) => <BaseNode data={data} title="Class (Clases)" icon={Box} color="bg-indigo-700"><input name="name" placeholder="Name" className="node-input nodrag mb-1" value={data.name||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><input name="bases" placeholder="Inherits" className="node-input nodrag" value={data.bases||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></BaseNode>,
+            py_init: ({ data, id }) => <BaseNode data={data} title="Constructor (__init__)" icon={FunctionSquare} color="bg-indigo-600"><div className="flex gap-1 items-center mb-1"><span className="text-xs font-mono">def __init__(</span><input name="args" placeholder="self" className="node-input nodrag w-16" value={data.args !== undefined ? data.args : 'self'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="text-xs font-mono">):</span></div><div className="text-[10px] text-gray-300 mt-1">Conectar a derecha</div></BaseNode>,
+            py_self: ({ data, id }) => <BaseNode data={data} title="Atributo (self)" icon={Box} color="bg-indigo-500"><div className="flex items-center gap-1 mb-1"><span className="font-mono text-xs font-bold text-indigo-200">self.</span><input name="attr" placeholder="nombre" className="node-input nodrag w-20" value={data.attr !== undefined ? data.attr : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><span className="font-bold text-white">=</span><input name="value" placeholder="val" className="node-input nodrag w-20" value={data.value !== undefined ? data.value : ''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
+            py_import: ({ data, id }) => <BaseNode data={data} title="Import (Importar)" icon={Package} color="bg-sky-700"><div className="flex gap-1 mb-1"><span className="text-xs">from</span><input name="from" className="node-input nodrag" value={data.from||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div><div className="flex gap-1"><span className="text-xs">import</span><input name="names" className="node-input nodrag" value={data.names||''} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /></div></BaseNode>,
+            py_try: ({ data, id }) => <BaseNode data={data} title="Try (Intentar)" icon={AlertTriangle} color="bg-amber-600"><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
+            py_except: ({ data, id }) => <BaseNode data={data} title="Except (Error)" icon={AlertTriangle} color="bg-amber-700"><input name="error_type" placeholder="Exception as e" className="node-input nodrag mb-1" value={data.error_type !== undefined ? data.error_type : 'Exception as e'} onChange={e=>data.onChange(id, {...data, [e.target.name]: e.target.value})} /><div className="text-[10px] text-gray-300">Conectar a derecha</div></BaseNode>,
         };
 
         // COMPONENTE MODAL PERSONALIZADO
@@ -1461,6 +1462,7 @@
             const [isExecuting, setIsExecuting] = useState(false);
             const codeRef = useRef(null);
             const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+            const [menu, setMenu] = useState(null);
             
             const reactFlowWrapper = useRef(null);
             const [prefs, setPrefs] = useState({
@@ -1528,6 +1530,46 @@
                     ...node,
                     data: { ...node.data, error: false, errorMsg: undefined }
                 })));
+            };
+
+            const onNodeContextMenu = useCallback((event, node) => {
+                event.preventDefault(); // Evita que salga el menú gris feo del navegador
+                
+                // Calculamos en qué punto exacto del cuadro gris hicimos el click
+                const pane = reactFlowWrapper.current.getBoundingClientRect();
+                
+                setMenu({
+                    id: node.id,
+                    top: event.clientY < pane.bottom - 100 ? event.clientY - pane.top : undefined,
+                    left: event.clientX < pane.right - 150 ? event.clientX - pane.left : undefined,
+                    bottom: event.clientY >= pane.bottom - 100 ? pane.bottom - event.clientY : undefined,
+                    right: event.clientX >= pane.right - 150 ? pane.right - event.clientX : undefined,
+                });
+            }, []);
+
+            const duplicateNode = (id) => {
+                const nodeToDuplicate = nodes.find(n => n.id === id);
+                if (nodeToDuplicate) {
+                    const newNode = {
+                        ...nodeToDuplicate,
+                        // Le damos un ID completamente nuevo para que ReactFlow no crashee
+                        id: `${nodeToDuplicate.type}_${Date.now()}`, 
+                        position: {
+                            x: nodeToDuplicate.position.x + 40, // Lo desfasamos un poquito para que no se superponga exactamente encima
+                            y: nodeToDuplicate.position.y + 40,
+                        },
+                        selected: false,
+                        data: {
+                            ...nodeToDuplicate.data,
+                            error: false, // El clon nace sin errores
+                            errorMsg: undefined
+                        }
+                    };
+                    setNodes(nds => nds.concat(newNode));
+                    addLog(`Nodo clonado con éxito`, 'info');
+                    setHasUnsavedChanges(true);
+                }
+                setMenu(null); // Cerramos el menú
             };
             
             const onConnect = useCallback((params) => {
@@ -1606,11 +1648,12 @@
             };
 
             const runPipeline = async () => {
-                clearNodeErrors(); // Limpiamos errores pasados
+                clearNodeErrors();
                 setIsExecuting(true);
                 setLogs([{ time: new Date().toLocaleTimeString(), msg: "Iniciando Sandbox...", type: 'warn' }]); 
                 setEdges(eds => eds.map(e => ({ ...e, data: { status: 'active' } })));
                 const blocks = serializeNodesLinear(nodes, edges);
+                
                 try {
                     if (window.eel) {
                         const res = await window.eel.api_execute(blocks)();
@@ -1619,10 +1662,13 @@
                         } else {
                             addLog(`Error: ${res.error}`, 'error');
                             
-                            if (res.error_nodes) {
+                            // Aquí interceptamos los errores tipográficos del backend
+                            if (res.error_nodes && res.error_nodes.length > 0) {
                                 setNodes(nds => nds.map(n => {
+                                    // Buscamos si este nodo en particular es el culpable
                                     const errInfo = res.error_nodes.find(err => err.node_id === n.id);
                                     if (errInfo) {
+                                        // Lo encendemos en rojo e inyectamos el mensaje
                                         return { ...n, data: { ...n.data, error: true, errorMsg: errInfo.message } };
                                     }
                                     return n;
@@ -1904,18 +1950,50 @@
                             </div>
                         </div>
                         <div className="flex-1 relative bg-[#1e1e1e]" ref={reactFlowWrapper}>
-                            {activeTab==='forest' ? <div className="h-full w-full"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} edgeTypes={edgeTypes} onInit={setReactFlowInstance} onDrop={onDrop} onDragOver={onDragOver} nodeTypes={nodeTypes} fitView snapToGrid={prefs.snapToGrid} snapGrid={[15,15]} connectionLineType={prefs.connectionStyle}> {prefs.showMinimap && <RFObj.MiniMap style={{background:'#1a1a1a'}} nodeStrokeColor="#555" />} <Background color="#333" gap={20} /><Controls className="bg-gray-800 border-gray-700 fill-white text-white" /></ReactFlow></div> :
-                             <div className="h-full w-full relative bg-[#1d1f21] overflow-auto custom-scrollbar group">
+                            {activeTab==='forest' ? (
+                                <div className="h-full w-full relative">
+                                    <ReactFlow 
+                                        nodes={nodes} edges={edges} 
+                                        onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} 
+                                        onConnect={onConnect} edgeTypes={edgeTypes} 
+                                        onInit={setReactFlowInstance} 
+                                        onDrop={onDrop} onDragOver={onDragOver} 
+                                        nodeTypes={nodeTypes} fitView 
+                                        snapToGrid={prefs.snapToGrid} snapGrid={[15,15]} 
+                                        connectionLineType={prefs.connectionStyle}
+                                        onNodeContextMenu={onNodeContextMenu} // <-- Escucha el click derecho
+                                        onPaneClick={() => setMenu(null)}     // <-- Cierra el menú al hacer click afuera
+                                    > 
+                                        {prefs.showMinimap && <RFObj.MiniMap style={{background:'#1a1a1a'}} nodeStrokeColor="#555" />} 
+                                        <Background color="#333" gap={20} />
+                                        <Controls className="bg-gray-800 border-gray-700 fill-white text-white" />
+                                    </ReactFlow>
+                                    
+                                    {/* DIBUJA EL MENÚ FLOTANTE */}
+                                    {menu && (
+                                        <div 
+                                            style={{ top: menu.top, left: menu.left, right: menu.right, bottom: menu.bottom }} 
+                                            className="absolute z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl py-1 w-36 overflow-hidden animate-fade-in"
+                                            onMouseLeave={() => setMenu(null)}
+                                        >
+                                            <button onClick={() => duplicateNode(menu.id)} className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-indigo-600 hover:text-white flex items-center gap-2 transition-colors">
+                                                <Copy size={16} /> Duplicar
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="h-full w-full relative bg-[#1d1f21] overflow-auto custom-scrollbar group">
                                     <button onClick={() => {navigator.clipboard.writeText(pythonCode); addLog("Código copiado al portapapeles", "success")}} className="absolute top-4 right-4 bg-gray-700/50 hover:bg-gray-600 text-gray-300 p-2 rounded-lg backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Copiar Código"><Code size={16} /></button>
                                     <pre className="!m-0 !p-6 !bg-transparent !font-mono !text-sm min-h-full" style={{tabSize: 4}}><code ref={codeRef} className="language-python">{pythonCode}</code></pre>
                                 </div>
-                            }
+                            )}
                         </div>
                     </div>
                     <div className="h-40 border-t border-gray-700 flex flex-col bg-black shrink-0">
                         <div className="bg-gray-800 text-[10px] uppercase font-bold tracking-wider px-3 py-1 text-gray-400 border-b border-gray-700 flex justify-between">
                             <span>Terminal Interactiva</span>
-                            <button onClick={()=>setLogs([])} className="hover:text-white">Clear</button>
+                            <button onClick={()=>setLogs([])} className="hover:text-white">Limpiar (Clear)</button>
                         </div>
                         <TerminalLog 
                             logs={logs} 
