@@ -7,6 +7,8 @@ de backend de EduBot en server.py.
 
 """
 
+import ast
+import difflib
 import eel
 import eel.browsers
 import os
@@ -27,7 +29,7 @@ from core.ml_adapter import Translator, execute_structs
 from core.ml_struct_rules import block_to_struct as ml_block_to_struct
 from storage import ml_exporter
 from storage import file_handler
-from core.executor import execute_user_code, input_queue
+from core.executor import execute_user_code, input_queue, kill_execution
 from core import ml_manager
 from estimators import memory_estimator
 # import maker_edu.auth
@@ -198,6 +200,129 @@ def api_move_to_trash(filename, file_type):
         return {'success': False, 'error': str(e)}
 
 # TRADUCCIÓN Y ESTRUCTURAS
+PYTHON_BUILTINS = {
+    'range', 'len', 'int', 'float', 'str', 'list', 'dict', 'set', 'tuple', 'bool',
+    'abs', 'min', 'max', 'sum', 'round', 'zip', 'map', 'filter', 'sorted', 'enumerate',
+    'print', 'input', 'True', 'False', 'None'
+}
+
+def _extract_names(expr: str):
+    if not expr or not isinstance(expr, str) or expr.strip() == '':
+        return set(), None
+    try:
+        tree = ast.parse(expr, mode='eval')
+    except SyntaxError as e:
+        return set(), str(e)
+
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            names.add(node.id)
+    return names, None
+
+
+def detect_typo_errors(blocks):
+    defined_names = {}
+    errors = []
+
+    def add_definition(name, node_id):
+        if name and isinstance(name, str) and name.strip():
+            defined_names[name.strip()] = node_id
+
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        b_type = block.get('type', '')
+        if b_type == 'py_var':
+            add_definition(block.get('var_name'), block.get('id'))
+        elif b_type == 'py_math':
+            add_definition(block.get('target'), block.get('id'))
+        elif b_type in ['py_int', 'py_float', 'py_input']:
+            add_definition(block.get('target'), block.get('id'))
+        elif b_type == 'py_loop':
+            add_definition(block.get('iterator'), block.get('id'))
+        elif b_type == 'py_func':
+            add_definition(block.get('func_name'), block.get('id'))
+        elif b_type == 'py_class':
+            add_definition(block.get('name'), block.get('id'))
+
+    def suggest(name):
+        candidates = difflib.get_close_matches(name, defined_names.keys(), n=1, cutoff=0.6)
+        return candidates[0] if candidates else None
+
+    def check_expression(expr, block_id, description):
+        names, parse_error = _extract_names(expr)
+        if parse_error:
+            errors.append({
+                'node_id': block_id,
+                'message': f"Error de sintaxis en {description}: {parse_error}",
+                'suggestion': None
+            })
+            return
+
+        for name in names:
+            if name in PYTHON_BUILTINS or name in defined_names:
+                continue
+            suggestion = suggest(name)
+            if suggestion:
+                errors.append({
+                    'node_id': block_id,
+                    'message': f"Nombre no definido '{name}' en {description}. Quizás quiso decir '{suggestion}'?",
+                    'suggestion': suggestion
+                })
+            else:
+                errors.append({
+                    'node_id': block_id,
+                    'message': f"Nombre no definido '{name}' en {description}.",
+                    'suggestion': None
+                })
+
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        b_type = block.get('type', '')
+        block_id = block.get('id')
+        if b_type == 'py_var':
+            check_expression(block.get('value', ''), block_id, 'valor de variable')
+        elif b_type == 'py_math':
+            check_expression(block.get('left', ''), block_id, 'lado izquierdo de la operación')
+            check_expression(block.get('right', ''), block_id, 'lado derecho de la operación')
+        elif b_type == 'py_print':
+            check_expression(block.get('content', ''), block_id, 'contenido de print')
+        elif b_type == 'py_input':
+            # target is definition, prompt can be ignored
+            pass
+        elif b_type == 'py_int' or b_type == 'py_float':
+            check_expression(block.get('value', ''), block_id, 'valor de conversión')
+        elif b_type == 'py_compare':
+            check_expression(block.get('left', ''), block_id, 'lado izquierdo de la comparación')
+            check_expression(block.get('right', ''), block_id, 'lado derecho de la comparación')
+        elif b_type == 'py_if':
+            check_expression(block.get('condition', ''), block_id, 'condición if')
+        elif b_type == 'py_elif':
+            check_expression(block.get('condition', ''), block_id, 'condición elif')
+        elif b_type == 'py_loop':
+            check_expression(block.get('iterable', ''), block_id, 'iterable del for')
+        elif b_type == 'py_while':
+            check_expression(block.get('condition', ''), block_id, 'condición while')
+        elif b_type == 'py_call':
+            func_expr = block.get('func', '')
+            args_expr = block.get('args', '')
+            check_expression(func_expr, block_id, 'función llamada')
+            if args_expr:
+                # parse as tuple-like args
+                check_expression(f"({args_expr})", block_id, 'argumentos de la llamada')
+        elif b_type == 'py_return':
+            check_expression(block.get('value', ''), block_id, 'valor de retorno')
+
+    # Remove duplicates by node_id + message
+    unique = {}
+    for err in errors:
+        key = (err['node_id'], err['message'])
+        if key not in unique:
+            unique[key] = err
+    return list(unique.values())
+
 @eel.expose
 def api_translate(direction, blocks=None, code=None, mode="code"):
     """
@@ -245,6 +370,14 @@ def api_execute(blocks, mode='auto'):
 
         if has_python_logic:
             # RUTA PYTHON (Ejecución de Script)
+            typo_errors = detect_typo_errors(blocks)
+            if typo_errors:
+                return {
+                    'success': False,
+                    'error': 'Se detectaron errores de tipografía/sintaxis en los bloques.',
+                    'error_nodes': typo_errors
+                }
+
             translator = Translator()
             
             # Traducir bloques a código real
@@ -268,6 +401,15 @@ def api_execute(blocks, mode='auto'):
 
     except Exception as e:
         return {"success": False, "error": f"Error interno de ejecución: {str(e)}"}
+
+@eel.expose
+def api_kill_execution():
+    """Detiene de forma inmediata la ejecución Python activa."""
+    try:
+        stopped = kill_execution()
+        return {"success": stopped, "error": None if stopped else "No hay ejecución activa."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @eel.expose
 def api_run_code(code):
