@@ -1472,6 +1472,7 @@
             });
             const [showSettings, setShowSettings] = useState(false);
             const [showTeacherDashboard, setShowTeacherDashboard] = useState(false);
+            const isExecutingRef = useRef(false);
 
 
             useEffect(() => {
@@ -1485,6 +1486,24 @@
                 window.eel.expose(trigger_frontend_input, 'trigger_frontend_input');
                 function trigger_frontend_input() {
                     setIsWaitingInput(true);
+                }
+            }, []);
+
+            useEffect(() => {
+                isExecutingRef.current = isExecuting;
+            }, [isExecuting]);
+
+            useEffect(() => {
+                window.eel.expose(api_realtime_log, 'api_realtime_log');
+                function api_realtime_log(text) {
+                    setLogs(p => [...p, { time: new Date().toLocaleTimeString(), msg: text, type: 'output' }]);
+                }
+
+                window.eel.expose(trigger_frontend_input, 'trigger_frontend_input');
+                function trigger_frontend_input() {
+                    if (isExecutingRef.current) {
+                        setIsWaitingInput(true);
+                    }
                 }
             }, []);
 

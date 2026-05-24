@@ -30,7 +30,7 @@ from core.ml_adapter import Translator, execute_structs
 from core.ml_struct_rules import block_to_struct as ml_block_to_struct
 from storage import ml_exporter
 from storage import file_handler
-from core.executor import execute_user_code, input_queue, kill_execution
+from core.executor import execute_user_code, submit_input, kill_execution
 from core import ml_manager
 from estimators import memory_estimator
 # import maker_edu.auth
@@ -1085,7 +1085,7 @@ def api_get_grades():
 @eel.expose
 def api_provide_input(user_text):
     """Recibe la respuesta de la terminal visual y desbloquea el hilo de Python"""
-    input_queue.put(user_text)
+    submit_input(user_text)
 
 # --------------------------------------------
 # PUNTO DE ENTRADA PRINCIPAL
