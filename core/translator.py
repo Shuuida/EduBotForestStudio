@@ -61,10 +61,6 @@ class Translator:
             block_type = block.get("type")
             if block_type is None or not isinstance(block_type, str) or block_type.strip() == "":
                 return f"# Error translating block: missing or invalid 'type' field in block {block!r}"
-
-            from core.ml_rules import get_ml_code
-            if block_type.startswith('ml_'):
-                return get_ml_code(block)
             
             # Delega directamente a block_to_code de translation_rules (maneja ML y todo)
             return block_to_code(block)

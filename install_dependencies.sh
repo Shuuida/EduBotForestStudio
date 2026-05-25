@@ -33,13 +33,13 @@ pip install --upgrade pip setuptools wheel
 echo
 echo "Creando archivo temporal de dependencias..."
 cat > temp_requirements.txt <<EOF
-fastapi==0.115.2
-uvicorn==0.32.0
-RestrictedPython==8.1
-PyYAML==6.0.2
-websockets==13.1
-flask==3.0.0
+eel==0.16.0
+bottle==0.12.25
+bottle-websocket==0.2.9
+cryptography==41.0.3
 requests==2.31.0
+PyYAML==6.0.2
+pyinstaller==6.3.0
 EOF
 
 # --- Step 6: Install dependencies ---
@@ -55,6 +55,6 @@ echo "==========================================================="
 echo "EduBot listo para ejecutarse"
 echo "Activa el entorno con:"
 echo "   source venv/bin/activate"
-echo "Y ejecuta el servidor con:"
-echo "   python server.py"
+echo "Y ejecuta la aplicacion con:"
+echo "   python main.py"
 echo "==========================================================="

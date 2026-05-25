@@ -53,13 +53,13 @@ pip cache purge >nul 2>&1
 echo.
 echo Creando archivo temporal de dependencias...
 (
-echo fastapi==0.115.2
-echo uvicorn==0.32.0
-echo RestrictedPython==8.1
-echo PyYAML==6.0.2
-echo websockets==13.1
-echo flask==3.0.0
+echo eel==0.16.0
+echo bottle==0.12.25
+echo bottle-websocket==0.2.9
+echo cryptography==41.0.3
 echo requests==2.31.0
+echo PyYAML==6.0.2
+echo pyinstaller==6.3.0
 ) > temp_requirements.txt
 
 :: --- Install dependencies ---
@@ -77,7 +77,7 @@ echo ===========================================================
 echo EduBot listo para ejecutarse offline
 echo Activa el entorno con:
 echo    venv\Scripts\activate
-echo Y ejecuta el servidor con:
-echo    python server.py
+echo Y ejecuta la aplicacion con:
+echo    python main.py
 echo ===========================================================
 pause

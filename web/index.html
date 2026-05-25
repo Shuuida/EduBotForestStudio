@@ -1465,10 +1465,21 @@
             const [menu, setMenu] = useState(null);
             
             const reactFlowWrapper = useRef(null);
-            const [prefs, setPrefs] = useState({
-                uiScale: '100', dyslexicFont: false, reduceMotion: false,
-                editorFontSize: '14', wordWrap: false, lineNumbers: true,
-                snapToGrid: true, showMinimap: false, connectionStyle: 'default' 
+            
+            // Lee el disco local al arrancar y lo fusiona con los valores por defecto
+            const [prefs, setPrefs] = useState(() => {
+                const defaultPrefs = {
+                    uiScale: '100', dyslexicFont: false, reduceMotion: false,
+                    editorFontSize: '14', wordWrap: false, lineNumbers: true,
+                    snapToGrid: true, showMinimap: false, connectionStyle: 'default' 
+                };
+                try {
+                    const saved = localStorage.getItem('edubot_preferences');
+                    // Combina inteligentemente por si hay nuevas configuraciones en futuras versiones
+                    return saved ? { ...defaultPrefs, ...JSON.parse(saved) } : defaultPrefs;
+                } catch (e) {
+                    return defaultPrefs;
+                }
             });
             const [showSettings, setShowSettings] = useState(false);
             const [showTeacherDashboard, setShowTeacherDashboard] = useState(false);

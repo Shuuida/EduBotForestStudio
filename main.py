@@ -26,13 +26,9 @@ from cryptography.fernet import Fernet
 import multiprocessing
 
 #IMPORTACIONES DEL NÚCLEO DE EDUBOT
-from core.ml_adapter import Translator, execute_structs
-from core.ml_struct_rules import block_to_struct as ml_block_to_struct
-from storage import ml_exporter
 from storage import file_handler
 from core.executor import execute_user_code, submit_input, kill_execution
-from core import ml_manager
-from estimators import memory_estimator
+from core.translator import Translator
 # import maker_edu.auth
 # import maker_edu.autograder
 # import maker_edu.dashboard
@@ -97,8 +93,7 @@ def get_app_status():
         "status": "online",
         "modules": {
             "translator": True,
-            "ml_adapter": True,
-            "ml_exporter": True,
+            "executor": True,
             "file_handler": True
         }
     }
@@ -108,6 +103,7 @@ def get_app_status():
 def api_save_project(data, filename):
     """Guarda el estado completo del editor (nodos y conexiones)"""
     try:
+        data['mode'] = 'python' # Aseguramos que el modo siempre se guarde como 'python' para consistencia
         # file_handler.save_proj maneja la extensión y directorios
         success = file_handler.save_proj(data, filename)
         return {'success': success}
@@ -139,63 +135,33 @@ def api_load_project(filename):
     except Exception as e:
         return {'error': f"Error de lectura: {str(e)}"}
 
-#@eel.expose
-#*def api_save_model_file(data, filename):
-    """
-    Guarda la arquitectura del modelo ML (nodos/conexiones) 
-    como archivo .edubotml en la carpeta 'models'.
-    """
-    try:
-        # Asegurar extensión
-        if not filename.endswith('.edubotml'):
-            filename += '.edubotml'
-        
-        models_dir = "models"
-        if not os.path.exists(models_dir):
-            os.makedirs(models_dir)
-            
-        full_path = os.path.join(models_dir, filename)
-        
-        # Guardamos usando el file_handler genérico o escritura directa
-        # Aquí usamos escritura directa para asegurar el path
-        import json
-        with open(full_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4)
-            
-        return {'success': True, 'path': full_path}
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
 @eel.expose
-def api_move_to_trash(filename, file_type):
+def api_move_to_trash(filename, file_type=None):
     """
-    Mueve un proyecto o modelo a la carpeta 'trash'.
-    file_type: 'project' (.edubotproj) o 'model' (.edubotml)
+    Mueve un proyecto a la carpeta 'trash'.
+    (El parámetro file_type se recibe para no romper el frontend, pero se ignora)
     """
     try:
-        trash_dir = "trash"
+        # Usamos rutas absolutas seguras para entornos empaquetados en .exe
+        trash_dir = os.path.join(file_handler.BASE_PATH, "trash")
+        projects_dir = os.path.join(file_handler.BASE_PATH, "projects")
+        
         if not os.path.exists(trash_dir):
             os.makedirs(trash_dir)
             
-        # Determinar directorio origen y extensión
-        if file_type == 'model':
-            src_dir = "models"
-            ext = ".edubotml"
-        else:
-            src_dir = "projects" # Asumiendo que file_handler usa esta carpeta base
-            ext = ".edubotproj"
+        ext = ".edubotproj"
             
         if not filename.endswith(ext):
             filename += ext
             
-        src_path = os.path.join(src_dir, filename)
+        src_path = os.path.join(projects_dir, filename)
         dst_path = os.path.join(trash_dir, filename)
         
         if os.path.exists(src_path):
             shutil.move(src_path, dst_path)
             return {'success': True}
         else:
-            return {'success': False, 'error': 'Archivo no encontrado'}
+            return {'success': False, 'error': 'Archivo de proyecto no encontrado.'}
             
     except Exception as e:
         return {'success': False, 'error': str(e)}
@@ -345,22 +311,16 @@ def detect_typo_errors(blocks):
     return list(unique.values())
 
 @eel.expose
-def api_translate(direction, blocks=None, code=None, mode="code"):
+def api_translate(direction, blocks=None, code=None):
     """
-    Maneja traducciones:
-    - Bloques -> Código Python
-    - Código -> Bloques
-    - Bloques -> Estructura JSON (para exportar a C)
+    Maneja traducciones exclusivas del motor Python:
+    - Bloques -> Código Python (to_python)
+    - Código Python -> Bloques (to_blocks)
     """
     try:
         translator = Translator()
         
-        if mode == "struct" and direction == "to_struct":
-            # Usado para exportar a C / Firmware
-            result = ml_exporter.export_blocks_to_struct(blocks)
-            return result
-
-        elif direction == "to_python":
+        if direction == "to_python":
             python_code = translator.translate_to_python(blocks)
             return {"result": python_code}
 
@@ -369,56 +329,36 @@ def api_translate(direction, blocks=None, code=None, mode="code"):
             return {"result": blocks_result}
         
         else:
-            return {"error": "Dirección o modo inválido"}
+            return {"error": "Dirección inválida. Use 'to_python' o 'to_blocks'."}
 
     except Exception as e:
         return {"error": f"Error de traducción: {str(e)}"}
 
 # EJECUCIÓN INTELIGENTE(ML y Código Python)
 @eel.expose
-def api_execute(blocks, mode='auto'):
+def api_execute(blocks):
     """
-    Ejecuta el pipeline de bloques.
-    Detecta automáticamente si es una simulación ML o un script de Python.
+    Ejecuta el pipeline de bloques puramente en el entorno seguro de Python.
     """
     try:
         if not blocks:
             return {"error": "No se recibieron bloques para ejecutar"}
 
-        # Detección de Modo
-        # Si encontramos bloques que empiezan con 'py_', asumimos modo Python Fundamentos
-        has_python_logic = any(b.get('type', '').startswith('py_') for b in blocks)
+        # 1. RASTREO DE ERRORES TIPOGRÁFICOS
+        typo_errors = detect_typo_errors(blocks)
+        if typo_errors:
+            return {
+                'success': False,
+                'error': 'Se detectaron errores de tipografía/sintaxis en los bloques.',
+                'error_nodes': typo_errors
+            }
 
-        if has_python_logic:
-            # RUTA PYTHON (Ejecución de Script)
-            typo_errors = detect_typo_errors(blocks)
-            if typo_errors:
-                return {
-                    'success': False,
-                    'error': 'Se detectaron errores de tipografía/sintaxis en los bloques.',
-                    'error_nodes': typo_errors
-                }
-
-            translator = Translator()
-            
-            # Traducir bloques a código real
-            code = translator.translate_to_python(blocks)
-            
-            # Ejecutar en Sandbox
-            # Retorna {'success': bool, 'output': str, 'error': str}
-            return execute_user_code(code)
-
-        else:
-            # RUTA ML (Pipeline de Datos)
-            structs = []
-            for b in blocks:
-                if isinstance(b, dict) and "action" in b:
-                    structs.append(b)
-                else:
-                    structs.append(ml_block_to_struct(b))
-
-            # Retorna {'success': bool, 'results': [...]}
-            return execute_structs(structs)
+        # 2. TRADUCCIÓN A CÓDIGO PYTHON
+        translator = Translator()
+        code = translator.translate_to_python(blocks)
+        
+        # 3. EJECUCIÓN EN SANDBOX
+        return execute_user_code(code)
 
     except Exception as e:
         return {"success": False, "error": f"Error interno de ejecución: {str(e)}"}
@@ -459,139 +399,6 @@ def api_add_node_manually(node_data):
     node_id = node_data.get('id', 'N/A')
     print(f"[Backend/Add] Nuevo nodo '{node_type}' con ID '{node_id}' agregado al editor visual.")
     return True
-
-# GESTIÓN DE ARCHIVOS GENÉRICOS
-#@eel.expose
-#*def api_file_save(content, name, file_type="auto"):
-    """
-    Guarda archivos generados (ej. exportaciones a C, datasets).
-    NOTA: El orden de argumentos se ajustó para coincidir con JS (content, name).
-    """
-    try:
-        # file_handler.auto_export deduce la extensión o usa el contenido
-        success = file_handler.auto_export(content, name)
-        return {"success": success}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-#@eel.expose
-#*def api_file_list():
-    try:
-        file_handler.ensure_dir_exist()
-        
-        # Filtro inteligente para datasets
-        datasets_raw = os.listdir("./datasets") if os.path.exists("./datasets") else []
-        valid_datasets = [f for f in datasets_raw if f.endswith('.json') or f.endswith('.csv')]
-
-        files = {
-            "projects": file_handler.list_projs(),
-            "models": os.listdir("./models") if os.path.exists("./models") else [],
-            "datasets": valid_datasets
-        }
-        return files
-    except Exception as e:
-        return {"error": str(e)}
-
-#@eel.expose
-#*def api_load_dataset_data(name):
-    """
-    Conecta la UI con la capacidad de lectura híbrida (CSV/JSON).
-    Permite a la interfaz previsualizar datos sin importar el formato origen.
-    """
-    try:
-        data = file_handler.load_dataset(name)
-        if data:
-            return {"success": True, "data": data}
-        else:
-            return {"success": False, "error": "Dataset vacío o no encontrado"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-# ESTIMACIÓN DE MEMORIA
-#@eel.expose
-#*def api_estimate_memory_desktop(model_name):
-    try:
-        entry = ml_manager._MODEL_REGISTRY.get(model_name)
-        if not entry:
-            return {"error": "Modelo no encontrado"}
-        
-        model = entry['model']
-        stats = memory_estimator.estimate_memory(
-            model, 
-            quantized=True,
-            target_flash=32256,
-            target_sram=2048
-        )
-        return stats
-    except Exception as e:
-        return {"error": str(e)}
-
-# EXPORTACIÓN A C
-#@eel.expose
-#*def api_export_c_model(model_name):
-    """
-    Genera el código C/C++ para Arduino del modelo entrenado y lo guarda en disco.
-    Incluye automáticamente cabeceras y guardas para Arduino Uno.
-    """
-    try:
-        # Recuperar el modelo de la memoria RAM
-        model = ml_manager.get_model(model_name)
-        if not model:
-            return {"success": False, "error": f"El modelo '{model_name}' no está entrenado. Ejecuta el entrenamiento primero."}
-
-        # Verificar si soporta exportación
-        if not hasattr(model, 'to_arduino_code'):
-             return {"success": False, "error": f"El modelo '{type(model).__name__}' no soporta exportación a C."}
-
-        # Generar el código fuente crudo (Lógica matemática)
-        raw_c_code = model.to_arduino_code(fn_name=model_name)
-        
-        # Preparar el código final (Inyección de Cabeceras)
-        # Generamos un nombre seguro para el Header Guard (ej. UNSABI_MODEL_H)
-        header_guard = f"{model_name.upper()}_MODEL_H"
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Plantilla profesional para Arduino Uno
-        final_c_code = f"""
-/**
-* EduBot ML Export: {model_name}
-* Target: Arduino Uno (AVR)
-* Generated at: {timestamp}
-**/
-
-#ifndef {header_guard}
-#define {header_guard}
-
-#include <Arduino.h>       // Tipos básicos (float, int, etc.)
-#include <avr/pgmspace.h>  // Gestión de memoria Flash (PROGMEM)
-#include <math.h>          // Funciones matemáticas (exp, sqrt)
-
-// --- INICIO DEL MODELO GENERADO ---
-{raw_c_code}
-// --- FIN DEL MODELO GENERADO ---
-
-#endif // {header_guard}
-"""
-
-        # Guardar archivo .h en carpeta 'exports'
-        filename = f"{model_name}.h"
-            
-        # Asegurar directorio
-        export_dir = "exports"
-        if not os.path.exists(export_dir):
-            os.makedirs(export_dir)
-                
-        full_path = os.path.join(export_dir, filename)
-            
-        with open(full_path, "w", encoding="utf-8") as f:
-            f.write(final_c_code)
-                
-            # Retornamos la ruta absoluta
-        abs_path = os.path.abspath(full_path)
-        return {"success": True, "path": abs_path}
-
-    except Exception as e:
-        return {"success": False, "error": f"Error interno exportando: {str(e)}"}
 
 @eel.expose
 def api_open_manual():
