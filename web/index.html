@@ -1418,6 +1418,8 @@
                                 <h3 className="text-blue-400 font-bold uppercase text-xs mb-3 flex items-center gap-2"><Code size={14}/> Editor de Código Python</h3>
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded"><label>Tamaño de Fuente (px)</label><input type="number" min="10" max="24" value={prefs.editorFontSize} onChange={e => handleChange('editorFontSize', e.target.value)} className="bg-gray-900 border border-gray-600 rounded p-1 text-white text-xs w-16" /></div>
+                                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded"><label>Ajuste de Línea (Word Wrap)</label><input type="checkbox" checked={prefs.wordWrap} onChange={e => handleChange('wordWrap', e.target.checked)} className="accent-blue-500 w-4 h-4" /></div>
+                                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded"><label>Números de Línea</label><input type="checkbox" checked={prefs.lineNumbers} onChange={e => handleChange('lineNumbers', e.target.checked)} className="accent-blue-500 w-4 h-4" /></div>
                                 </div>
                             </div>
 
@@ -1666,10 +1668,110 @@
 
             const runPipeline = async () => {
                 clearNodeErrors();
+                
+                const blocks = serializeNodesLinear(nodes, edges);
+                
+                let loopErrorNodeId = null;
+                let loopErrorMessage = "";
+
+                const checkInfiniteLoops = (blockList) => {
+                    for (const block of blockList) {
+                        
+                        // Función recursiva para buscar un nodo 'Control -> break'
+                        const hasBreak = (subBlocks) => {
+                            for (const sb of subBlocks) {
+                                if (sb.type === 'py_control' && sb.control_type === 'break') return true;
+                                if (sb.body && hasBreak(sb.body)) return true;
+                            }
+                            return false;
+                        };
+
+                        // REGLA PARA CICLOS WHILE
+                        if (block.type === 'py_while') {
+                            const cond = (block.condition || '').toString().trim();
+                            const condLower = cond.toLowerCase();
+
+                            if (!hasBreak(block.body || [])) {
+                                let isInfinite = false;
+                                
+                                // Caso 1: La condición es estática (True, 1, vacío, o algo como 10 > 5 sin variables)
+                                if (condLower === 'true' || condLower === '1' || condLower === '') {
+                                    isInfinite = true;
+                                } 
+                                // Caso 2: Tiene variables, comprobamos si se actualizan dentro del cuerpo
+                                else {
+                                    // Extraemos nombres de variables con Regex (ignorando palabras clave nativas)
+                                    const words = cond.match(/[a-zA-Z_]\w*/g) || [];
+                                    const actualVars = words.filter(v => !['True','False','and','or','not','is','in'].includes(v));
+                                    
+                                    if (actualVars.length > 0) {
+                                        const modifiesVar = (subBlocks, varNames) => {
+                                            for (const sb of subBlocks) {
+                                                // Nodos que alteran variables en EduBot
+                                                if (sb.type === 'py_var' && varNames.includes(sb.var_name)) return true;
+                                                if (['py_math', 'py_int', 'py_float', 'py_input'].includes(sb.type) && varNames.includes(sb.target)) return true;
+                                                
+                                                // Búsqueda en profundidad por si está dentro de un If
+                                                if (sb.body && modifiesVar(sb.body, varNames)) return true;
+                                            }
+                                            return false;
+                                        };
+                                        
+                                        // Si la variable de la condición nunca se modifica adentro, es bucle infinito seguro
+                                        if (!modifiesVar(block.body || [], actualVars)) {
+                                            isInfinite = true;
+                                        }
+                                    } else {
+                                        // Si no tiene variables y no era 'true', es estático puro = infinito
+                                        isInfinite = true;
+                                    }
+                                }
+
+                                if (isInfinite) {
+                                    loopErrorNodeId = block.id;
+                                    loopErrorMessage = "⚠️ Riesgo de Bucle Infinito. Modifica la variable adentro o añade un 'Control (Break)'.";
+                                    return;
+                                }
+                            }
+                        }
+                        
+                        // REGLA PARA CICLOS FOR (Limita rangos absurdos si no hay break)
+                        if (block.type === 'py_loop') {
+                            const iterable = (block.iterable || '').toString().replace(/\s/g, '');
+                            
+                            // Si lo dejan vacío o intentan hacer un rango masivo de 3+ ceros (ej. range(999) sin break, lo bloqueamos por seguridad
+                            if (iterable === '' || iterable.match(/range\([0-9]{3,}\)/)) {
+                                if (!hasBreak(block.body || [])) {
+                                    loopErrorNodeId = block.id;
+                                    loopErrorMessage = "⚠️ Rango vacío o excesivamente grande. Redúcelo o añade un 'Control (Break)'.";
+                                    return;
+                                }
+                            }
+                        }
+
+                        // Explorar sub-niveles (Ifs o ciclos anidados)
+                        if (block.body && block.body.length > 0) {
+                            checkInfiniteLoops(block.body);
+                            if (loopErrorNodeId) return; // Propagar salida rápida
+                        }
+                    }
+                };
+
+                checkInfiniteLoops(blocks);
+
+                // Si detectamos un bucle mortal, cortamos todo y lanzamos el aura roja
+                if (loopErrorNodeId) {
+                    setNodes(nds => nds.map(n => n.id === loopErrorNodeId ? { ...n, data: { ...n.data, error: true, errorMsg: loopErrorMessage } } : n));
+                    addLog("Ejecución abortada: Bucle infinito bloqueado por seguridad.", 'error');
+                    setEdges(eds => eds.map(e => ({ ...e, data: { status: 'error' } }))); // Coloreamos las líneas rojas
+                    setIsExecuting(false);
+                    return; 
+                }
+                
+                // Si pasa la inspección del escudo, arranca la interfaz y llama a Python
                 setIsExecuting(true);
                 setLogs([{ time: new Date().toLocaleTimeString(), msg: "Iniciando Sandbox...", type: 'warn' }]); 
                 setEdges(eds => eds.map(e => ({ ...e, data: { status: 'active' } })));
-                const blocks = serializeNodesLinear(nodes, edges);
                 
                 try {
                     if (window.eel) {
@@ -1679,13 +1781,11 @@
                         } else {
                             addLog(`Error: ${res.error}`, 'error');
                             
-                            // Aquí interceptamos los errores tipográficos del backend
+                            // Aquí se procesan los errores tipográficos que devuelve Python
                             if (res.error_nodes && res.error_nodes.length > 0) {
                                 setNodes(nds => nds.map(n => {
-                                    // Buscamos si este nodo en particular es el culpable
                                     const errInfo = res.error_nodes.find(err => err.node_id === n.id);
                                     if (errInfo) {
-                                        // Lo encendemos en rojo e inyectamos el mensaje
                                         return { ...n, data: { ...n.data, error: true, errorMsg: errInfo.message } };
                                     }
                                     return n;
@@ -2000,9 +2100,23 @@
                                     )}
                                 </div>
                             ) : (
-                                <div className="h-full w-full relative bg-[#1d1f21] overflow-auto custom-scrollbar group">
-                                    <button onClick={() => {navigator.clipboard.writeText(pythonCode); addLog("Código copiado al portapapeles", "success")}} className="absolute top-4 right-4 bg-gray-700/50 hover:bg-gray-600 text-gray-300 p-2 rounded-lg backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Copiar Código"><Code size={16} /></button>
-                                    <pre className="!m-0 !p-6 !bg-transparent !font-mono !text-sm min-h-full" style={{tabSize: 4}}><code ref={codeRef} className="language-python">{pythonCode}</code></pre>
+                                <div className="flex h-full w-full relative bg-[#1d1f21] overflow-auto custom-scrollbar group">
+                                    {/* Botón de Copiar (Ajustado el z-index y el margen para que no choque con las barras) */}
+                                    <button onClick={() => {navigator.clipboard.writeText(pythonCode); addLog("Código copiado al portapapeles", "success")}} className="absolute top-4 right-6 bg-gray-700/50 hover:bg-gray-600 text-gray-300 p-2 rounded-lg backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity z-20 shadow-lg" title="Copiar Código"><Code size={16} /></button>
+                                    
+                                    {/* BARRA LATERAL: Contador de Líneas Dinámico */}
+                                    {prefs.lineNumbers && (
+                                        <div className="py-6 px-4 bg-[#1a1c1e] text-gray-500 font-mono border-r border-gray-800 text-right select-none sticky left-0 z-10 shrink-0" style={{ lineHeight: '1.5', fontSize: `${prefs.editorFontSize}px` }}>
+                                            {pythonCode.split('\n').map((_, i) => (
+                                                <div key={i}>{i + 1}</div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
+                                    {/* LIENZO DE CÓDIGO: Conectado al WordWrap y al Tamaño de Fuente */}
+                                    <pre className={`!m-0 !p-6 !bg-transparent !font-mono flex-1 ${prefs.wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`} style={{tabSize: 4, lineHeight: '1.5', fontSize: `${prefs.editorFontSize}px`}}>
+                                        <code ref={codeRef} className="language-python">{pythonCode}</code>
+                                    </pre>
                                 </div>
                             )}
                         </div>
