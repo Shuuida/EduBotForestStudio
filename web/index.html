@@ -2092,7 +2092,33 @@
                                         onNodeContextMenu={onNodeContextMenu} // <-- Escucha el click derecho
                                         onPaneClick={() => setMenu(null)}     // <-- Cierra el menú al hacer click afuera
                                     > 
-                                        {prefs.showMinimap && <RFObj.MiniMap style={{background:'#1a1a1a'}} nodeStrokeColor="#555" />} 
+                                        {prefs.showMinimap && (
+                                            <RFObj.MiniMap 
+                                                style={{ background: '#111827', border: '1px solid #374151', borderRadius: '8px' }} 
+                                                nodeColor={(n) => {
+                                                    const colors = {
+                                                        py_var: '#ca8a04', py_input: '#475569', py_print: '#4b5563', 
+                                                        py_int: '#be185d', py_float: '#db2777', py_math: '#0d9488', 
+                                                        py_compare: '#0e7490', py_if: '#ea580c', py_elif: '#f97316', 
+                                                        py_else: '#b91c1c', py_loop: '#c2410c', py_while: '#9a3412', 
+                                                        py_control: '#991b1b', py_class: '#4338ca', py_init: '#4f46e5', 
+                                                        py_self: '#6366f1', py_func: '#7c3aed', py_return: '#e11d48', 
+                                                        py_call: '#e11d48', py_try: '#d97706', py_except: '#b45309', 
+                                                        py_import: '#0369a1'
+                                                    };
+                                                    return colors[n.type] || '#6b7280';
+                                                }}
+                                                nodeStrokeColor={(n) => {
+                                                    // Si el nodo tiene un error tipográfico, el minimapa lo resalta en rojo vivo
+                                                    if (n.data?.error) return '#ef4444';
+                                                    return '#1f2937';
+                                                }}
+                                                nodeBorderRadius={8}
+                                                maskColor="rgba(0, 0, 0, 0.6)"
+                                                pannable={true}
+                                                zoomable={true}
+                                            />
+                                        )} 
                                         <Background color="#333" gap={20} />
                                         <Controls className="bg-gray-800 border-gray-700 fill-white text-white" />
                                     </ReactFlow>
